@@ -8,4 +8,4 @@ const especialidadeSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-module.exports = mongoose.model("Especialidade", especialidadeSchema);
+module.exports = mongoose.model("Especialidade", especialidadeSchema, "especialidades");
