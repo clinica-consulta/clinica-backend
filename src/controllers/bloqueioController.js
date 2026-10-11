@@ -2,6 +2,8 @@ const Bloqueio = require("../models/Bloqueio");
 const Profissional = require("../models/Profissional");
 const AppError = require("../utils/AppError");
 const { escolherCampos } = require("../utils/texto");
+const { formatarDataBR } = require("../utils/datas");
+const { notificar } = require("../services/notificacaoService");
 
 const listar = async (req, res) => {
     const filtro = {};
@@ -19,6 +21,12 @@ const criar = async (req, res) => {
         throw new AppError("Profissional não encontrado", 404);
     }
     const bloqueio = await Bloqueio.create({ ...dados, dataFim: dados.dataFim || dados.dataInicio });
+    await notificar({
+        titulo: "Agenda bloqueada",
+        texto: `Período bloqueado em ${formatarDataBR(bloqueio.dataInicio)}, das ${bloqueio.horaInicio} às ${bloqueio.horaFim}.`,
+        publico: ["recepcionista", "profissional", "administrador"],
+        profissional: bloqueio.profissional
+    });
     res.status(201).json(bloqueio);
 };
 
