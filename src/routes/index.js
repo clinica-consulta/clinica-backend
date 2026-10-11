@@ -8,6 +8,7 @@ rotas.get("/", (_req, res) => {
 
 rotas.use("/auth", require("./authRoutes"));
 rotas.use("/usuarios", require("./usuarioRoutes"));
+rotas.use("/pacientes", require("./pacienteRoutes"));
 rotas.use("/especialidades", require("./especialidadeRoutes"));
 rotas.use("/convenios", require("./convenioRoutes"));
 rotas.use("/configuracoes", require("./configuracaoRoutes"));
