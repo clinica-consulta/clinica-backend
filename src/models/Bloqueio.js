@@ -18,4 +18,4 @@ bloqueioSchema.pre("validate", function () {
     if (this.horaFim <= this.horaInicio) this.invalidate("horaFim", "A hora final deve ser depois da inicial");
 });
 
-module.exports = mongoose.model("Bloqueio", bloqueioSchema);
+module.exports = mongoose.model("Bloqueio", bloqueioSchema, "bloqueios");

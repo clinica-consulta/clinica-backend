@@ -12,4 +12,4 @@ contadorSchema.statics.proximo = async function (nome, inicial = 1000) {
     return contador.valor;
 };
 
-module.exports = mongoose.model("Contador", contadorSchema);
+module.exports = mongoose.model("Contador", contadorSchema, "contadores");
