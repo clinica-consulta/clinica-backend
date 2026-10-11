@@ -12,4 +12,4 @@ const filaEsperaSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-module.exports = mongoose.model("FilaEspera", filaEsperaSchema);
+module.exports = mongoose.model("FilaEspera", filaEsperaSchema, "fila_espera");

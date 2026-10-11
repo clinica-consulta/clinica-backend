@@ -26,4 +26,4 @@ pacienteSchema.pre("save", function () {
     if (this.isModified("nome")) this.iniciais = iniciais(this.nome);
 });
 
-module.exports = mongoose.model("Paciente", pacienteSchema);
+module.exports = mongoose.model("Paciente", pacienteSchema, "pacientes");

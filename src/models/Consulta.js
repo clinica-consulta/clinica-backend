@@ -32,6 +32,6 @@ const consultaSchema = new mongoose.Schema(
 consultaSchema.index({ profissional: 1, data: 1, hora: 1 });
 consultaSchema.index({ paciente: 1, data: -1 });
 
-module.exports = mongoose.model("Consulta", consultaSchema);
+module.exports = mongoose.model("Consulta", consultaSchema, "consultas");
 module.exports.STATUS = STATUS;
 module.exports.STATUS_ABERTOS = STATUS_ABERTOS;

@@ -30,4 +30,4 @@ notificacaoSchema.methods.paraUsuario = function (usuario) {
     return { ...dados, lida: lidaPor.some((id) => String(id) === String(usuario._id)) };
 };
 
-module.exports = mongoose.model("Notificacao", notificacaoSchema);
+module.exports = mongoose.model("Notificacao", notificacaoSchema, "notificacoes");
