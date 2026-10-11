@@ -48,4 +48,4 @@ profissionalSchema.pre("save", function () {
     if (this.isModified("nome")) this.iniciais = iniciais(this.nome);
 });
 
-module.exports = mongoose.model("Profissional", profissionalSchema);
+module.exports = mongoose.model("Profissional", profissionalSchema, "profissionais");

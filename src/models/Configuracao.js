@@ -17,4 +17,4 @@ configuracaoSchema.statics.obter = async function () {
     return (await this.findOne()) ?? this.create({});
 };
 
-module.exports = mongoose.model("Configuracao", configuracaoSchema);
+module.exports = mongoose.model("Configuracao", configuracaoSchema, "configuracoes");

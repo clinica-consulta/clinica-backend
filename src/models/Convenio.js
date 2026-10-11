@@ -10,4 +10,4 @@ const convenioSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-module.exports = mongoose.model("Convenio", convenioSchema);
+module.exports = mongoose.model("Convenio", convenioSchema, "convenios");
