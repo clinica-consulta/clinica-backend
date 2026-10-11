@@ -1,4 +1,6 @@
 const Especialidade = require("../models/Especialidade");
+const Profissional = require("../models/Profissional");
+const Convenio = require("../models/Convenio");
 const AppError = require("../utils/AppError");
 
 const buscar = async (id) => {
@@ -18,9 +20,16 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
     const especialidade = await buscar(req.params.id);
+    const nomeAnterior = especialidade.nome;
     if (req.body?.nome !== undefined) especialidade.nome = req.body.nome;
     if (req.body?.ativo !== undefined) especialidade.ativo = Boolean(req.body.ativo);
     await especialidade.save();
+
+    // Renomear atualiza os profissionais e as coberturas de convênio que usam o nome antigo.
+    if (especialidade.nome !== nomeAnterior) {
+        await Profissional.updateMany({ especialidade: nomeAnterior }, { especialidade: especialidade.nome });
+        await Convenio.updateMany({ coberturas: nomeAnterior }, { $set: { "coberturas.$": especialidade.nome } });
+    }
     res.json(especialidade);
 };
 
