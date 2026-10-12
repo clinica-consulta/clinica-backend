@@ -7,7 +7,8 @@
     },
     "especialidades": ["Clínica geral"],
     "convenios": [
-        { "nome": "Particular", "coberturas": [] }
+        { "nome": "Particular", "coberturas": [] },
+        { "nome": "Unimed", "coberturas": [] }
     ],
     "administradores": [
         { "nome": "Nome do Administrador", "email": "admin@suaclinica.com.br", "senha": "troque-esta-senha" }
