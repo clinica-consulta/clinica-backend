@@ -9,6 +9,7 @@ rotas.post("/cadastro", auth.cadastro);
 rotas.post("/recuperar-senha", auth.recuperarSenha);
 rotas.post("/redefinir-senha", auth.redefinirSenha);
 rotas.get("/me", autenticar, auth.perfil);
+rotas.put("/me", autenticar, auth.atualizarPerfil);
 rotas.patch("/senha", autenticar, auth.alterarSenha);
 
 module.exports = rotas;

@@ -237,3 +237,18 @@ describe("cadastros da administração", () => {
         assert.equal(resposta.body.confirmacaoAutomatica, true);
     });
 });
+
+describe("perfil do usuário logado", () => {
+    it("atualiza o próprio nome e troca a senha", async () => {
+        const atualizado = await api().put("/api/auth/me").set(como("recepcao")).send({ nome: "Rafaela Costa Lima" });
+        assert.equal(atualizado.status, 200);
+        assert.equal(atualizado.body.nome, "Rafaela Costa Lima");
+
+        const errada = await api().patch("/api/auth/senha").set(como("recepcao")).send({ senhaAtual: "x", novaSenha: "nova-senha" });
+        assert.equal(errada.status, 401);
+        const certa = await api().patch("/api/auth/senha").set(como("recepcao")).send({ senhaAtual: "123456", novaSenha: "nova-senha" });
+        assert.equal(certa.status, 200);
+        const login = await api().post("/api/auth/login").send({ email: "recepcao@demo.com", senha: "nova-senha" });
+        assert.equal(login.status, 200);
+    });
+});
