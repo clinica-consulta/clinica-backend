@@ -79,7 +79,8 @@ const executar = async () => {
         }
 
         // "Particular" sempre existe para o cadastro de pacientes funcionar.
-        const convenios = dados.convenios ?? [];
+        // Aceita { "nome": "Unimed", "coberturas": [] } ou só "Unimed" (cobre todas as especialidades).
+        const convenios = (dados.convenios ?? []).map((item) => (typeof item === "string" ? { nome: item } : item)).filter((item) => item.nome);
         if (!convenios.some((item) => item.nome === "Particular")) convenios.unshift({ nome: "Particular", coberturas: [] });
         for (const convenio of convenios) {
             await Convenio.updateOne({ nome: convenio.nome }, { $set: { coberturas: convenio.coberturas ?? [] } }, { upsert: true });
