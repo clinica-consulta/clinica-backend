@@ -1,0 +1,27 @@
+{
+    "clinica": {
+        "nome": "Nome da Clínica",
+        "cnpj": "00.000.000/0001-00",
+        "telefone": "(00) 0000-0000",
+        "email": "contato@suaclinica.com.br"
+    },
+    "especialidades": ["Clínica geral"],
+    "convenios": [
+        { "nome": "Particular", "coberturas": [] }
+    ],
+    "administradores": [
+        { "nome": "Nome do Administrador", "email": "admin@suaclinica.com.br", "senha": "troque-esta-senha" }
+    ],
+    "recepcionistas": [
+        { "nome": "Nome da Recepcionista", "email": "recepcao@suaclinica.com.br", "telefone": "(00) 00000-0000" }
+    ],
+    "profissionais": [
+        {
+            "nome": "Dra. Nome da Médica",
+            "email": "medica@suaclinica.com.br",
+            "especialidade": "Clínica geral",
+            "crm": "CRM 00000",
+            "telefone": "(00) 00000-0000"
+        }
+    ]
+}
