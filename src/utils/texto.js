@@ -1,6 +1,8 @@
+// Ignora títulos como "Dr." e "Dra." (Dra. Ana Martins -> AM).
 const iniciais = (nome = "") => {
-    const partes = nome.trim().split(/\s+/).filter((parte) => parte.length > 2);
-    const fonte = partes.length ? partes : nome.trim().split(/\s+/);
+    const limpo = nome.trim().replace(/^dra?\.?\s+/i, "");
+    const partes = limpo.split(/\s+/).filter((parte) => parte.length > 2);
+    const fonte = partes.length ? partes : limpo.split(/\s+/);
     return `${fonte[0]?.[0] ?? ""}${fonte[fonte.length - 1]?.[0] ?? ""}`.toUpperCase();
 };
 
