@@ -27,8 +27,8 @@ cp .env.example .env        # no Windows: copy .env.example .env
 
 # 3. Ajustar o MONGODB_URI no .env (local ou Atlas, veja abaixo)
 
-# 4. Criar os dados de demonstração (APAGA o banco configurado)
-npm run seed
+# 4. Cadastrar a clínica e os acessos reais (veja "Dados reais" abaixo)
+npm run setup -- --limpar   # --limpar APAGA tudo antes; tire para só acrescentar
 
 # 5. Subir a API
 npm run dev                 # com recarga automática (nodemon)
@@ -52,18 +52,20 @@ MONGODB_URI=mongodb+srv://USUARIO:SENHA@SEU-CLUSTER.mongodb.net/gestao-consultas
 
 No Atlas, libere o seu IP em **Network Access**. O `.env` nunca vai para o GitHub (está no `.gitignore`).
 
-### Logins de demonstração
+### Dados reais (uso de verdade)
 
-Depois do `npm run seed`, todos usam a senha **123456** (valor de `SENHA_PADRAO`):
+1. Copie `dados-iniciais.example.json` para `dados-iniciais.json` e preencha com os dados da clínica, as especialidades, os convênios e as pessoas reais (administradores, recepção e profissionais).
+   O `dados-iniciais.json` está no `.gitignore` e não vai para o GitHub.
+2. Rode `npm run setup -- --limpar` para apagar os dados de teste e criar tudo do arquivo.
+   Depois, `npm run setup` (sem `--limpar`) só acrescenta e atualiza, sem mexer nas senhas de quem já existe.
+3. Quem não tiver `"senha"` no arquivo entra com a `SENHA_PADRAO` do `.env` e troca a senha clicando no próprio nome, no topo do site.
 
-| Perfil        | E-mail                  |
-|---------------|-------------------------|
-| Recepção      | recepcao@demo.com       |
-| Paciente      | paciente@demo.com       |
-| Profissional  | profissional@demo.com   |
-| Administrador | admin@demo.com          |
+Pacientes não entram no arquivo: eles se cadastram pela tela "Cadastre-se" ou são cadastrados pela recepção.
+Sem o arquivo, o setup cria só o administrador definido no `.env` (`ADMIN_NOME`, `ADMIN_EMAIL`, `ADMIN_SENHA`).
 
-Pacientes cadastrados pela recepção e médicos/equipe cadastrados pelo administrador também recebem a senha `SENHA_PADRAO`.
+### Dados de demonstração
+
+`npm run seed:demo` **apaga o banco** e cria dados fictícios com os logins `recepcao@demo.com`, `paciente@demo.com`, `profissional@demo.com` e `admin@demo.com` (senha `123456`). Use só para testar.
 
 ### Testes
 
@@ -84,6 +86,7 @@ Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authoriz
 | POST | `/api/auth/recuperar-senha` | público | Gera token de redefinição (exibido no console da API) |
 | POST | `/api/auth/redefinir-senha` | público | Troca a senha com o token |
 | GET | `/api/auth/me` | logado | Usuário logado |
+| PUT | `/api/auth/me` | logado | Atualizar o próprio nome e telefone |
 | PATCH | `/api/auth/senha` | logado | Alterar a própria senha |
 | GET | `/api/pacientes` | logado | Paciente vê só o próprio cadastro |
 | POST | `/api/pacientes` | recepção, admin | Cadastrar paciente |
@@ -132,7 +135,7 @@ src/
 ├── models/             # Schemas do MongoDB
 ├── routes/             # Rotas da API (/api/...)
 ├── services/           # Agenda (horários/elegibilidade) e notificações
-├── seed/               # Dados de demonstração (npm run seed)
+├── seed/               # Setup com dados reais (npm run setup) e demonstração (npm run seed:demo)
 └── utils/              # Datas, textos e erros
 tests/                  # Testes de integração
 ```
