@@ -10,3 +10,6 @@ node_modules/
 *.log
 .DS_Store
 coverage/
+
+# Dados reais da clínica (nomes, e-mails e senhas)
+dados-iniciais.json

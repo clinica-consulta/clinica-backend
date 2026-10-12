@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Usuario = require("../models/Usuario");
 const Paciente = require("../models/Paciente");
+const Profissional = require("../models/Profissional");
 const AppError = require("../utils/AppError");
 const { gerarToken } = require("../middlewares/auth");
 
@@ -48,6 +49,26 @@ const cadastro = async (req, res) => {
 
 const perfil = (req, res) => {
     res.json(req.usuario);
+};
+
+// O próprio usuário atualiza nome e telefone (e-mail e perfil ficam com a administração).
+const atualizarPerfil = async (req, res) => {
+    const usuario = req.usuario;
+    if (req.body?.nome !== undefined) usuario.nome = req.body.nome;
+    if (req.body?.telefone !== undefined) usuario.telefone = req.body.telefone;
+    await usuario.save();
+
+    // Mantém o cadastro ligado com o mesmo nome (save recalcula as iniciais).
+    const cadastro = usuario.paciente
+        ? await Paciente.findById(usuario.paciente)
+        : usuario.profissional
+          ? await Profissional.findById(usuario.profissional)
+          : null;
+    if (cadastro) {
+        cadastro.set({ nome: usuario.nome, telefone: usuario.telefone });
+        await cadastro.save();
+    }
+    res.json(usuario);
 };
 
 const alterarSenha = async (req, res) => {
@@ -98,4 +119,4 @@ const redefinirSenha = async (req, res) => {
     res.json({ mensagem: "Senha redefinida com sucesso" });
 };
 
-module.exports = { login, cadastro, perfil, alterarSenha, recuperarSenha, redefinirSenha };
+module.exports = { login, cadastro, perfil, atualizarPerfil, alterarSenha, recuperarSenha, redefinirSenha };
