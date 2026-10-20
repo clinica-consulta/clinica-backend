@@ -7,7 +7,6 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "setup": "node src/seed/setup.js",
-    "seed:demo": "node src/seed/seed.js",
     "test": "node --test --test-concurrency=1"
   },
   "keywords": [],
