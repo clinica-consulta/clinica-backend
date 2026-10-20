@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const conectarBanco = async (uri = process.env.MONGODB_URI) => {
     if (!uri) {
-        throw new Error("MONGODB_URI não definida. Copie o .env.example para .env e preencha.");
+        throw new Error("MONGODB_URI não definida. Rode npm run setup para gerar o .env");
     }
 
     console.log("Tentando conectar ao MongoDB...");

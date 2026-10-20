@@ -18,54 +18,37 @@ Front-end que consome esta API: [clinic-harmony](https://github.com/mocotoTonin/
 
 ## Como rodar
 
+Precisa do Node.js 20+ e do MongoDB rodando na máquina (o mesmo que aparece no MongoDB Compass em `mongodb://127.0.0.1:27017`).
+
 ```bash
-# 1. Instalar as dependências
 npm install
-
-# 2. Criar o arquivo de configuração
-cp .env.example .env        # no Windows: copy .env.example .env
-
-# 3. Ajustar o MONGODB_URI no .env (local ou Atlas, veja abaixo)
-
-# 4. Cadastrar a clínica e os acessos reais (veja "Acessos iniciais" abaixo)
-npm run setup -- --limpar   # --limpar APAGA tudo antes; tire para só acrescentar
-
-# 5. Subir a API
-npm run dev                 # com recarga automática (nodemon)
-# ou
-npm start
+npm run setup     # cria o .env e o banco "clinica-senai"; pede a senha do administrador
+npm run dev       # sobe a API em http://localhost:3000 (com recarga automática)
 ```
 
-A API sobe em `http://localhost:3000` e as rotas ficam em `http://localhost:3000/api`.
+Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo aleatório para os logins. Ele nunca vai para o GitHub. Para mudar algo, edite esse arquivo:
 
-### MongoDB local ou Atlas
+| Variável | Padrão |
+|---|---|
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/clinica-senai` (troque pelo endereço do Atlas, se for usar) |
+| `PORT` | `3000` |
+| `JWT_SECRET` | gerado aleatoriamente pelo setup |
+| `CORS_ORIGIN` | vazio (libera qualquer origem) |
+| `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
 
-No `.env`, use **um** dos dois:
+### Banco e acessos iniciais
 
-```env
-# MongoDB instalado na sua máquina
-MONGODB_URI=mongodb://127.0.0.1:27017/gestao-consultas
+`npm run setup` cria a **Clínica Senai** (dados fictícios), as especialidades Clínica geral, Cardiologia e Pediatria, os convênios Particular e Unimed, e três acessos:
 
-# MongoDB Atlas (Connect > Drivers no painel do Atlas)
-MONGODB_URI=mongodb+srv://USUARIO:SENHA@SEU-CLUSTER.mongodb.net/gestao-consultas?retryWrites=true&w=majority
-```
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Administrador | `marco@senai.org.br` | a que você digitar no terminal durante o setup |
+| Recepção | `recepcao@senai.org.br` | `123456` |
+| Profissional | `carlos.mendes@senai.org.br` | `123456` |
 
-No Atlas, libere o seu IP em **Network Access**. O `.env` nunca vai para o GitHub (está no `.gitignore`).
+Todo o resto é cadastrado **pelo site**: o administrador cria médicos, recepcionistas, especialidades e convênios, e os pacientes se cadastram em "Cadastre-se" (ou pela recepção). Cada pessoa troca a própria senha clicando no nome, no topo do site.
 
-### Acessos iniciais (uso de verdade)
-
-O `npm run setup` cria **um administrador, uma recepcionista e um profissional**. Pacientes não são criados por ele: cada paciente se cadastra na tela "Cadastre-se" do site, ou é cadastrado pela recepção.
-
-1. No `.env`, preencha os blocos `ADMIN_*`, `RECEPCAO_*` e `PROFISSIONAL_*` (nome, e-mail e, se quiser, senha), além de `CLINICA_NOME` e `CONVENIOS` (separados por vírgula).
-   Quem ficar sem senha entra com a `SENHA_PADRAO` e troca clicando no próprio nome, no topo do site.
-2. Rode `npm run setup -- --limpar` para apagar o banco e criar esses acessos.
-   Depois, `npm run setup` (sem `--limpar`) só acrescenta e atualiza, sem mexer nas senhas de quem já existe.
-
-Para cadastrar mais pessoas de uma vez (várias recepcionistas, vários médicos, coberturas por especialidade), copie `dados-iniciais.example.json` para `dados-iniciais.json` e preencha. Quando esse arquivo existe, o setup usa ele em vez do `.env`. Ele está no `.gitignore` e não vai para o GitHub.
-
-### Dados de demonstração
-
-`npm run seed:demo` **apaga o banco** e cria dados fictícios com os logins `recepcao@demo.com`, `paciente@demo.com`, `profissional@demo.com` e `admin@demo.com` (senha `123456`). Use só para testar.
+`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Sem `--limpar`, só cria o que faltar.
 
 ### Testes
 
@@ -135,7 +118,7 @@ src/
 ├── models/             # Schemas do MongoDB
 ├── routes/             # Rotas da API (/api/...)
 ├── services/           # Agenda (horários/elegibilidade) e notificações
-├── seed/               # Setup com dados reais (npm run setup) e demonstração (npm run seed:demo)
+├── seed/               # Setup do banco (npm run setup) e dados usados nos testes
 └── utils/              # Datas, textos e erros
 tests/                  # Testes de integração
 ```
