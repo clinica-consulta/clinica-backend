@@ -1,124 +1,20 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
-const conectarBanco = require("./config/database");
-const Usuario = require("./models/Usuario");
-const bcrypt = require("bcryptjs");
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => {
-    res.json({
-        mensagem: "API Gestão de Consultas funcionando!"
-    });
-});
-
-app.post("/usuarios", async (req, res) => {
-    try {
-        const senhaCriptografada = await bcrypt.hash(req.body.senha, 10);
-
-        const dadosUsuario = {
-            nome: req.body.nome,
-            email: req.body.email,
-            senha: senhaCriptografada,
-            tipo: req.body.tipo
-        };
-
-        const usuario = await Usuario.create(dadosUsuario);
-
-        res.status(201).json(usuario);
-    } catch (erro) {
-        res.status(500).json({
-            mensagem: "Erro ao cadastrar usuário",
-            erro: erro.message
-        });
-    }
-});
-
-app.get("/usuarios", async (req, res) => {
-    try {
-        const usuarios = await Usuario.find();
-
-        res.json(usuarios);
-    } catch (erro) {
-        res.status(500).json({
-            mensagem: "Erro ao buscar usuários",
-            erro: erro.message
-        });
-    }
-});
-
-app.get("/usuarios/:id", async (req, res) => {
-    try {
-        const usuario = await Usuario.findById(req.params.id);
-
-        if (!usuario) {
-            return res.status(404).json({
-                mensagem: "Usuário não encontrado"
-            });
-        }
-
-        res.json(usuario);
-    } catch (erro) {
-        res.status(500).json({
-            mensagem: "Erro ao buscar usuário",
-            erro: erro.message
-        });
-    }
-});
-
-app.put("/usuarios/:id", async (req, res) => {
-    try {
-        const usuario = await Usuario.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true }
-        );
-
-        if (!usuario) {
-            return res.status(404).json({
-                mensagem: "Usuário não encontrado"
-            });
-        }
-
-        res.json(usuario);
-    } catch (erro) {
-        res.status(500).json({
-            mensagem: "Erro ao atualizar usuário",
-            erro: erro.message
-        });
-    }
-});
-
-app.delete("/usuarios/:id", async (req, res) => {
-    try {
-        const usuario = await Usuario.findByIdAndDelete(req.params.id);
-
-        if (!usuario) {
-            return res.status(404).json({
-                mensagem: "Usuário não encontrado"
-            });
-        }
-
-        res.json({
-            mensagem: "Usuário excluído com sucesso!"
-        });
-    } catch (erro) {
-        res.status(500).json({
-            mensagem: "Erro ao excluir usuário",
-            erro: erro.message
-        });
-    }
-});
+const app = require("./app");
+const { conectarBanco } = require("./config/database");
 
 const PORT = process.env.PORT || 3000;
 
-conectarBanco();
+const iniciar = async () => {
+    try {
+        await conectarBanco();
+        app.listen(PORT, () => {
+            console.log(`Servidor rodando em http://localhost:${PORT}`);
+        });
+    } catch (erro) {
+        console.error("Não foi possível iniciar a API:", erro.message);
+        process.exit(1);
+    }
+};
 
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+iniciar();

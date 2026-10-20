@@ -1,37 +1,19 @@
-// const dns = require("dns");
-// const mongoose = require("mongoose");
-
-// dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
-// const conectarBanco = async () => {
-//     try {
-//         await mongoose.connect(process.env.MONGODB_URI);
-
-//         console.log("MongoDB conectado com sucesso!");
-//     } catch (erro) {
-//         console.error("Erro ao conectar ao MongoDB:", erro);
-//         process.exit(1);
-//     }
-// };
-
-// module.exports = conectarBanco;
-
-
 const mongoose = require("mongoose");
 
-const conectarBanco = async () => {
-    try {
-        console.log("Tentando conectar ao MongoDB...");
-
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000
-        });
-
-        console.log("MongoDB conectado com sucesso!");
-    } catch (erro) {
-        console.error("Erro ao conectar ao MongoDB:", erro);
-        process.exit(1);
+const conectarBanco = async (uri = process.env.MONGODB_URI) => {
+    if (!uri) {
+        throw new Error("MONGODB_URI não definida. Copie o .env.example para .env e preencha.");
     }
+
+    console.log("Tentando conectar ao MongoDB...");
+
+    await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 10000
+    });
+
+    console.log(`MongoDB conectado com sucesso! (banco: ${mongoose.connection.name})`);
 };
 
-module.exports = conectarBanco;
+const desconectarBanco = () => mongoose.disconnect();
+
+module.exports = { conectarBanco, desconectarBanco };
