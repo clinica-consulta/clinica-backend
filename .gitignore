@@ -1,0 +1,15 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (nunca subir senhas)
+.env
+.env.*
+!.env.example
+
+# Logs e sistema
+*.log
+.DS_Store
+coverage/
+
+# Dados reais da clínica (nomes, e-mails e senhas)
+dados-iniciais.json

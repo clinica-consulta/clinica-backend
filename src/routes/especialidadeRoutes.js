@@ -1,0 +1,12 @@
+const { Router } = require("express");
+const controller = require("../controllers/especialidadeController");
+const { autenticar, permitir } = require("../middlewares/auth");
+
+const rotas = Router();
+
+rotas.get("/", controller.listar);
+rotas.post("/", autenticar, permitir("administrador"), controller.criar);
+rotas.put("/:id", autenticar, permitir("administrador"), controller.atualizar);
+rotas.patch("/:id/status", autenticar, permitir("administrador"), controller.alternarStatus);
+
+module.exports = rotas;
