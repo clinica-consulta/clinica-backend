@@ -13,26 +13,48 @@ const Configuracao = require("../models/Configuracao");
 // Prepara o banco para uso real, sem dados fictícios.
 //   npm run setup              -> cria/atualiza o que estiver em dados-iniciais.json
 //   npm run setup -- --limpar  -> APAGA tudo antes (inclusive os dados de demonstração)
-// Sem dados-iniciais.json, cria só o administrador definido no .env (ADMIN_NOME, ADMIN_EMAIL, ADMIN_SENHA).
+// Sem dados-iniciais.json, usa o .env: um administrador, uma recepcionista e um profissional.
+// Pacientes não são criados aqui: eles se cadastram pelo site ou pela recepção.
 
 const ARQUIVO = path.resolve(__dirname, "../../dados-iniciais.json");
 const SENHA_PADRAO = () => process.env.SENHA_PADRAO || "123456";
+
+const doEnv = (prefixo) => {
+    const email = process.env[`${prefixo}_EMAIL`];
+    if (!email) return [];
+    return [{
+        nome: process.env[`${prefixo}_NOME`] || email,
+        email,
+        senha: process.env[`${prefixo}_SENHA`] || undefined,
+        telefone: process.env[`${prefixo}_TELEFONE`] || undefined
+    }];
+};
 
 const lerDados = () => {
     if (fs.existsSync(ARQUIVO)) {
         console.log(`Lendo ${path.basename(ARQUIVO)}...`);
         return JSON.parse(fs.readFileSync(ARQUIVO, "utf8"));
     }
-    if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_SENHA) {
+    console.log("Lendo os acessos do .env...");
+    const administradores = doEnv("ADMIN");
+    if (!administradores.length) {
         throw new Error(
-            "Crie o arquivo dados-iniciais.json (copie de dados-iniciais.example.json) " +
-                "ou defina ADMIN_NOME, ADMIN_EMAIL e ADMIN_SENHA no .env"
+            "Preencha ADMIN_EMAIL, RECEPCAO_EMAIL e PROFISSIONAL_EMAIL no .env " +
+                "(ou crie o dados-iniciais.json a partir do dados-iniciais.example.json)"
         );
     }
+    const especialidade = process.env.PROFISSIONAL_ESPECIALIDADE || "Clínica geral";
     return {
-        administradores: [
-            { nome: process.env.ADMIN_NOME || "Administrador", email: process.env.ADMIN_EMAIL, senha: process.env.ADMIN_SENHA }
-        ]
+        ...(process.env.CLINICA_NOME && { clinica: { nome: process.env.CLINICA_NOME } }),
+        especialidades: [especialidade],
+        convenios: (process.env.CONVENIOS || "Particular").split(",").map((nome) => nome.trim()).filter(Boolean),
+        administradores,
+        recepcionistas: doEnv("RECEPCAO"),
+        profissionais: doEnv("PROFISSIONAL").map((item) => ({
+            ...item,
+            especialidade,
+            crm: process.env.PROFISSIONAL_CRM || "A informar"
+        }))
     };
 };
 
