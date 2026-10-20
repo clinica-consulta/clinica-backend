@@ -27,7 +27,7 @@ cp .env.example .env        # no Windows: copy .env.example .env
 
 # 3. Ajustar o MONGODB_URI no .env (local ou Atlas, veja abaixo)
 
-# 4. Cadastrar a clínica e os acessos reais (veja "Dados reais" abaixo)
+# 4. Cadastrar a clínica e os acessos reais (veja "Acessos iniciais" abaixo)
 npm run setup -- --limpar   # --limpar APAGA tudo antes; tire para só acrescentar
 
 # 5. Subir a API
@@ -52,16 +52,16 @@ MONGODB_URI=mongodb+srv://USUARIO:SENHA@SEU-CLUSTER.mongodb.net/gestao-consultas
 
 No Atlas, libere o seu IP em **Network Access**. O `.env` nunca vai para o GitHub (está no `.gitignore`).
 
-### Dados reais (uso de verdade)
+### Acessos iniciais (uso de verdade)
 
-1. Copie `dados-iniciais.example.json` para `dados-iniciais.json` e preencha com os dados da clínica, as especialidades, os convênios e as pessoas reais (administradores, recepção e profissionais).
-   O `dados-iniciais.json` está no `.gitignore` e não vai para o GitHub.
-2. Rode `npm run setup -- --limpar` para apagar os dados de teste e criar tudo do arquivo.
+O `npm run setup` cria **um administrador, uma recepcionista e um profissional**. Pacientes não são criados por ele: cada paciente se cadastra na tela "Cadastre-se" do site, ou é cadastrado pela recepção.
+
+1. No `.env`, preencha os blocos `ADMIN_*`, `RECEPCAO_*` e `PROFISSIONAL_*` (nome, e-mail e, se quiser, senha), além de `CLINICA_NOME` e `CONVENIOS` (separados por vírgula).
+   Quem ficar sem senha entra com a `SENHA_PADRAO` e troca clicando no próprio nome, no topo do site.
+2. Rode `npm run setup -- --limpar` para apagar o banco e criar esses acessos.
    Depois, `npm run setup` (sem `--limpar`) só acrescenta e atualiza, sem mexer nas senhas de quem já existe.
-3. Quem não tiver `"senha"` no arquivo entra com a `SENHA_PADRAO` do `.env` e troca a senha clicando no próprio nome, no topo do site.
 
-Pacientes não entram no arquivo: eles se cadastram pela tela "Cadastre-se" ou são cadastrados pela recepção.
-Sem o arquivo, o setup cria só o administrador definido no `.env` (`ADMIN_NOME`, `ADMIN_EMAIL`, `ADMIN_SENHA`).
+Para cadastrar mais pessoas de uma vez (várias recepcionistas, vários médicos, coberturas por especialidade), copie `dados-iniciais.example.json` para `dados-iniciais.json` e preencha. Quando esse arquivo existe, o setup usa ele em vez do `.env`. Ele está no `.gitignore` e não vai para o GitHub.
 
 ### Dados de demonstração
 
