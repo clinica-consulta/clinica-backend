@@ -3,7 +3,7 @@ const Usuario = require("../models/Usuario");
 const AppError = require("../utils/AppError");
 
 const segredo = () => {
-    if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET não definido no .env");
+    if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET não definido. Rode npm run setup para gerar o .env");
     return process.env.JWT_SECRET;
 };
 
