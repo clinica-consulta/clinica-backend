@@ -35,6 +35,7 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 | `JWT_SECRET` | gerado aleatoriamente pelo setup |
 | `CORS_ORIGIN` | vazio (libera qualquer origem) |
 | `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | vazios. Preencha para o código de redefinição de senha ir por e-mail; sem eles, o código aparece na tela e no terminal da API |
 
 ### Banco e acessos iniciais
 
@@ -66,8 +67,8 @@ Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authoriz
 |---|---|---|---|
 | POST | `/api/auth/login` | público | Login com `email` e `senha` |
 | POST | `/api/auth/cadastro` | público | Cadastro de paciente (já devolve o token) |
-| POST | `/api/auth/recuperar-senha` | público | Gera token de redefinição (exibido no console da API) |
-| POST | `/api/auth/redefinir-senha` | público | Troca a senha com o token |
+| POST | `/api/auth/recuperar-senha` | público | Confere se o e-mail está cadastrado e envia um código de 6 dígitos |
+| POST | `/api/auth/redefinir-senha` | público | Troca a senha com e-mail + código (5 tentativas, vale 15 min) |
 | GET | `/api/auth/me` | logado | Usuário logado |
 | PUT | `/api/auth/me` | logado | Atualizar o próprio nome e telefone |
 | PATCH | `/api/auth/senha` | logado | Alterar a própria senha |
@@ -76,7 +77,7 @@ Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authoriz
 | PUT | `/api/pacientes/:id` | recepção, admin, o próprio paciente | Editar |
 | PATCH | `/api/pacientes/:id/status` | recepção, admin | Ativar/desativar |
 | GET | `/api/profissionais` | logado | Listar (filtros `especialidade`, `ativo`) |
-| POST | `/api/profissionais` | admin | Cadastrar médico |
+| POST | `/api/profissionais` | recepção, admin | Cadastrar médico |
 | PUT | `/api/profissionais/:id` | admin, o próprio médico (contato) | Editar |
 | PATCH | `/api/profissionais/:id/status` | admin | Ativar/desativar |
 | PUT | `/api/profissionais/:id/disponibilidade/:dia` | admin | Expediente do dia (0=domingo … 6=sábado) |
@@ -87,7 +88,8 @@ Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authoriz
 | POST | `/api/consultas` | recepção, admin, paciente | Agendar |
 | PATCH | `/api/consultas/:id/status` | conforme o perfil | Confirmar, cancelar, realizada, não compareceu |
 | PATCH | `/api/consultas/:id/remarcar` | recepção, admin, paciente | Remarcar |
-| POST | `/api/consultas/:id/lembrete` | recepção, admin | Enviar lembrete |
+| POST | `/api/consultas/:id/lembrete` | recepção, admin | Enviar lembrete (só um por consulta) |
+| POST | `/api/consultas/:id/pagamento` | paciente, recepção, admin | Pagamento simulado (`metodo`: Pix, Cartão de crédito, Cartão de débito) |
 | POST | `/api/consultas/lembretes` | recepção, admin | Lembrete para todas as pendentes |
 | GET/POST/PATCH/DELETE | `/api/fila-espera` | recepção, admin | Fila de espera (`/:id/convidar`) |
 | GET | `/api/notificacoes` | logado | Avisos do perfil (`?naoLidas=true`) |

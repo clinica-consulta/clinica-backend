@@ -1,11 +1,18 @@
 const mongoose = require("mongoose");
+const { cpfValido, formatarCpf } = require("../utils/cpf");
 const { iniciais } = require("../utils/texto");
 
 const pacienteSchema = new mongoose.Schema(
     {
         nome: { type: String, required: [true, "Informe o nome do paciente"], trim: true },
         iniciais: { type: String },
-        cpf: { type: String, required: [true, "Informe o CPF"], unique: true, trim: true },
+        cpf: {
+            type: String,
+            required: [true, "Informe o CPF"],
+            unique: true,
+            set: formatarCpf,
+            validate: [cpfValido, "CPF inválido. Confira os números."]
+        },
         telefone: { type: String, trim: true, default: "" },
         email: {
             type: String,
