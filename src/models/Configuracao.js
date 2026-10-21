@@ -8,7 +8,8 @@ const configuracaoSchema = new mongoose.Schema(
         telefone: { type: String, default: "" },
         email: { type: String, default: "" },
         antecedenciaLembreteHoras: { type: Number, default: 24, min: 1 },
-        confirmacaoAutomatica: { type: Boolean, default: false }
+        confirmacaoAutomatica: { type: Boolean, default: false },
+        valorConsulta: { type: Number, default: 150, min: 0 }
     },
     { timestamps: true }
 );

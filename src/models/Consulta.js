@@ -24,7 +24,15 @@ const consultaSchema = new mongoose.Schema(
         canal: { type: String, enum: ["Paciente", "Recepção"], default: "Recepção" },
         lembreteEnviadoEm: { type: String, default: null },
         respostaConfirmacao: { type: String, enum: ["Confirmou", "Cancelou", "Sem resposta"], default: "Sem resposta" },
-        historico: { type: [registroSchema], default: [] }
+        historico: { type: [registroSchema], default: [] },
+        // Pagamento simulado: criado quando a recepção registra a consulta.
+        pagamento: {
+            status: { type: String, enum: ["Pendente", "Pago", null], default: null },
+            valor: { type: Number, default: 0 },
+            metodo: { type: String, default: "" },
+            codigo: { type: String, default: "" },
+            pagoEm: { type: Date, default: null }
+        }
     },
     { timestamps: true }
 );
