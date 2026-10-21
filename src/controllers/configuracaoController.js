@@ -1,7 +1,7 @@
 const Configuracao = require("../models/Configuracao");
 const { escolherCampos } = require("../utils/texto");
 
-const CAMPOS = ["nome", "cnpj", "telefone", "email", "antecedenciaLembreteHoras", "confirmacaoAutomatica"];
+const CAMPOS = ["nome", "cnpj", "telefone", "email", "antecedenciaLembreteHoras", "confirmacaoAutomatica", "valorConsulta"];
 
 const obter = async (_req, res) => {
     res.json(await Configuracao.obter());
