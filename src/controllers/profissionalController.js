@@ -54,7 +54,7 @@ const criar = async (req, res) => {
 };
 
 const atualizar = async (req, res) => {
-    const ehAdmin = req.usuario.tipo === "administrador";
+    const ehAdmin = ["administrador", "recepcionista"].includes(req.usuario.tipo);
     if (!ehAdmin && String(req.usuario.profissional) !== String(req.params.id)) {
         throw new AppError("Você só pode editar o próprio perfil", 403);
     }
