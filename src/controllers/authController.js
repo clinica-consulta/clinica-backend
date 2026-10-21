@@ -4,6 +4,7 @@ const Paciente = require("../models/Paciente");
 const Profissional = require("../models/Profissional");
 const AppError = require("../utils/AppError");
 const { gerarToken } = require("../middlewares/auth");
+const { enviarEmail } = require("../services/emailService");
 
 const respostaDeSessao = (usuario) => ({ token: gerarToken(usuario), usuario });
 
@@ -84,37 +85,66 @@ const alterarSenha = async (req, res) => {
 };
 
 // Gera um token de redefinição. Sem serviço de e-mail configurado, o link é exibido no console da API.
+const EMAIL_VALIDO = /^\S+@\S+\.\S+$/;
+const hashCodigo = (codigo) => crypto.createHash("sha256").update(String(codigo)).digest("hex");
+
+// Passo 1: confere se o e-mail existe e envia um código de 6 dígitos (válido por 15 minutos).
 const recuperarSenha = async (req, res) => {
     const email = String(req.body?.email ?? "").toLowerCase().trim();
+    if (!EMAIL_VALIDO.test(email)) throw new AppError("Digite um e-mail válido");
+
     const usuario = await Usuario.findOne({ email });
+    if (!usuario) throw new AppError("Não encontramos nenhuma conta com este e-mail", 404);
+    if (usuario.status === "Inativo") throw new AppError("Este acesso está desativado. Fale com a clínica.", 403);
 
-    if (usuario) {
-        const token = crypto.randomBytes(20).toString("hex");
-        usuario.tokenRedefinicao = crypto.createHash("sha256").update(token).digest("hex");
-        usuario.tokenRedefinicaoExpira = new Date(Date.now() + 60 * 60 * 1000);
-        await usuario.save();
-        console.log(`[recuperar-senha] Token para ${email}: ${token} (válido por 1 hora)`);
-    }
+    const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+    usuario.tokenRedefinicao = hashCodigo(codigo);
+    usuario.tokenRedefinicaoExpira = new Date(Date.now() + 15 * 60 * 1000);
+    usuario.tentativasRedefinicao = 0;
+    await usuario.save();
 
-    res.json({ mensagem: "Se o e-mail estiver cadastrado, enviaremos as instruções de redefinição." });
+    const enviado = await enviarEmail({
+        para: email,
+        assunto: "Código para redefinir sua senha",
+        texto: `Olá, ${usuario.nome}!\n\nSeu código para redefinir a senha é: ${codigo}\nEle vale por 15 minutos.\n\nSe não foi você, ignore este e-mail.`
+    }).catch((erro) => {
+        console.error("Falha ao enviar e-mail:", erro.message);
+        return false;
+    });
+
+    if (enviado) return res.json({ mensagem: `Enviamos um código para ${email}.` });
+
+    // Sem SMTP configurado (ambiente de teste/local): o código aparece no terminal da API e na tela.
+    console.log(`[recuperar-senha] Código para ${email}: ${codigo} (válido por 15 minutos)`);
+    res.json({ mensagem: "E-mail confirmado. Como o envio de e-mail não está configurado, o código aparece aqui.", codigoTeste: codigo });
 };
 
+// Passo 2: confere o código e grava a nova senha.
 const redefinirSenha = async (req, res) => {
-    const { token, novaSenha } = req.body ?? {};
-    if (!token || !novaSenha || String(novaSenha).length < 6) {
-        throw new AppError("Informe o token e uma nova senha com pelo menos 6 caracteres");
-    }
+    const email = String(req.body?.email ?? "").toLowerCase().trim();
+    const { codigo, novaSenha } = req.body ?? {};
+    if (!email || !codigo) throw new AppError("Informe o e-mail e o código recebido");
+    if (!novaSenha || String(novaSenha).length < 6) throw new AppError("A nova senha precisa ter pelo menos 6 caracteres");
 
-    const hash = crypto.createHash("sha256").update(String(token)).digest("hex");
-    const usuario = await Usuario.findOne({
-        tokenRedefinicao: hash,
-        tokenRedefinicaoExpira: { $gt: new Date() }
-    });
-    if (!usuario) throw new AppError("Token inválido ou expirado", 400);
+    const usuario = await Usuario.findOne({ email, tokenRedefinicaoExpira: { $gt: new Date() } }).select(
+        "+tokenRedefinicao +tentativasRedefinicao"
+    );
+    if (!usuario?.tokenRedefinicao) throw new AppError("Código inválido ou expirado. Peça um novo código.", 400);
+    if (usuario.tokenRedefinicao !== hashCodigo(String(codigo).trim())) {
+        // Depois de 5 erros o código é descartado, para ninguém ficar chutando números.
+        usuario.tentativasRedefinicao = (usuario.tentativasRedefinicao ?? 0) + 1;
+        if (usuario.tentativasRedefinicao >= 5) {
+            usuario.tokenRedefinicao = undefined;
+            usuario.tokenRedefinicaoExpira = undefined;
+        }
+        await usuario.save();
+        throw new AppError("Código inválido ou expirado", 400);
+    }
 
     usuario.senha = novaSenha;
     usuario.tokenRedefinicao = undefined;
     usuario.tokenRedefinicaoExpira = undefined;
+    usuario.tentativasRedefinicao = 0;
     await usuario.save();
     res.json({ mensagem: "Senha redefinida com sucesso" });
 };

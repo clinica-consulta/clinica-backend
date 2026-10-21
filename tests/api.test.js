@@ -60,7 +60,7 @@ describe("autenticação", () => {
     it("cadastra um novo paciente e já entra", async () => {
         const resposta = await api().post("/api/auth/cadastro").send({
             nome: "Lucas Teste",
-            cpf: "999.888.777-66",
+            cpf: "999.888.777-14",
             telefone: "(11) 90000-0000",
             email: "lucas@teste.com",
             senha: "senha123",
@@ -70,6 +70,34 @@ describe("autenticação", () => {
         assert.equal(resposta.status, 201);
         assert.ok(resposta.body.token);
         assert.equal(resposta.body.usuario.tipo, "paciente");
+    });
+
+    it("recusa CPF inválido no cadastro", async () => {
+        const resposta = await api().post("/api/auth/cadastro").send({
+            nome: "CPF Errado",
+            cpf: "123.456.789-00",
+            email: "cpf.errado@teste.com",
+            senha: "senha123",
+            dataNascimento: "2000-01-01",
+            convenio: "Particular"
+        });
+        assert.equal(resposta.status, 400);
+    });
+
+    it("redefine a senha com o código enviado ao e-mail", async () => {
+        const inexistente = await api().post("/api/auth/recuperar-senha").send({ email: "ninguem@teste.com" });
+        assert.equal(inexistente.status, 404);
+
+        const pedido = await api().post("/api/auth/recuperar-senha").send({ email: "lucas@teste.com" });
+        assert.equal(pedido.status, 200);
+        assert.match(pedido.body.codigoTeste, /^\d{6}$/);
+
+        const errado = await api().post("/api/auth/redefinir-senha").send({ email: "lucas@teste.com", codigo: "000000x", novaSenha: "outra123" });
+        assert.equal(errado.status, 400);
+        const certo = await api().post("/api/auth/redefinir-senha").send({ email: "lucas@teste.com", codigo: pedido.body.codigoTeste, novaSenha: "outra123" });
+        assert.equal(certo.status, 200);
+        const login = await api().post("/api/auth/login").send({ email: "lucas@teste.com", senha: "outra123" });
+        assert.equal(login.status, 200);
     });
 
     it("não deixa cadastrar o mesmo e-mail duas vezes", async () => {
@@ -194,6 +222,35 @@ describe("agendamento", () => {
         assert.ok(horarios.body.horarios.includes("11:00"));
     });
 
+    it("recepção registra a consulta e o paciente paga pela notificação", async () => {
+        const eu = await api().get("/api/auth/me").set(como("paciente"));
+        const criada = await api()
+            .post("/api/consultas")
+            .set(como("recepcao"))
+            .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:00" });
+        assert.equal(criada.status, 201);
+        assert.equal(criada.body.pagamento.status, "Pendente");
+
+        const avisos = await api().get("/api/notificacoes").set(como("paciente"));
+        const cobranca = avisos.body.find((item) => item.acao === "pagamento" && item.consulta === criada.body.id);
+        assert.ok(cobranca, "paciente recebe o aviso de pagamento");
+
+        const paga = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("paciente")).send({ metodo: "Pix" });
+        assert.equal(paga.status, 200);
+        assert.equal(paga.body.pagamento.status, "Pago");
+        const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("paciente")).send({ metodo: "Pix" });
+        assert.equal(denovo.status, 409);
+    });
+
+    it("só permite um lembrete por consulta", async () => {
+        const consultas = await api().get("/api/consultas").set(como("recepcao"));
+        const aberta = consultas.body.find((item) => !item.lembreteEnviadoEm && ["Agendada", "Confirmada", "Remarcada"].includes(item.status));
+        const primeira = await api().post(`/api/consultas/${aberta.id}/lembrete`).set(como("recepcao"));
+        assert.equal(primeira.status, 200);
+        const segunda = await api().post(`/api/consultas/${aberta.id}/lembrete`).set(como("recepcao"));
+        assert.equal(segunda.status, 409);
+    });
+
     it("envia lembretes pendentes uma única vez", async () => {
         const primeira = await api().post("/api/consultas/lembretes").set(como("recepcao"));
         assert.equal(primeira.status, 200);
@@ -214,6 +271,16 @@ describe("cadastros da administração", () => {
         const login = await api().post("/api/auth/login").send({ email: "novo.medico@clinica.com", senha: "123456" });
         assert.equal(login.status, 200);
         assert.equal(login.body.usuario.tipo, "profissional");
+    });
+
+    it("recepção também cadastra médicos", async () => {
+        const criado = await api().post("/api/profissionais").set(como("recepcao")).send({
+            nome: "Dra. Recepção Cadastrou",
+            especialidade: "Pediatria",
+            crm: "CRM 2",
+            email: "pela.recepcao@clinica.com"
+        });
+        assert.equal(criado.status, 201);
     });
 
     it("desativar paciente bloqueia o login dele", async () => {

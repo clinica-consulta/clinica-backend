@@ -13,6 +13,9 @@ const notificacaoSchema = new mongoose.Schema(
         },
         paciente: { type: mongoose.Schema.Types.ObjectId, ref: "Paciente", default: null },
         profissional: { type: mongoose.Schema.Types.ObjectId, ref: "Profissional", default: null },
+        // Consulta ligada ao aviso (ex.: pagamento pendente).
+        consulta: { type: mongoose.Schema.Types.ObjectId, ref: "Consulta", default: null },
+        acao: { type: String, enum: ["", "pagamento"], default: "" },
         lidaPor: { type: [mongoose.Schema.Types.ObjectId], ref: "Usuario", default: [] }
     },
     { timestamps: true }

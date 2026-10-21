@@ -3,6 +3,8 @@ const iniciais = (nome = "") => {
     const limpo = nome.trim().replace(/^dra?\.?\s+/i, "");
     const partes = limpo.split(/\s+/).filter((parte) => parte.length > 2);
     const fonte = partes.length ? partes : limpo.split(/\s+/);
+    // Nome único (ex.: "Marco") vira "MA", não "MM".
+    if (fonte.length === 1) return (fonte[0] ?? "").slice(0, 2).toUpperCase();
     return `${fonte[0]?.[0] ?? ""}${fonte[fonte.length - 1]?.[0] ?? ""}`.toUpperCase();
 };
 
