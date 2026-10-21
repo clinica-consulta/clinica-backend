@@ -11,6 +11,8 @@ const { verificarElegibilidade, horariosDisponiveis } = require("../services/age
 const { STATUS, STATUS_ABERTOS } = Consulta;
 const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
 
+const formatarValor = (valor) => Number(valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 const registrar = (consulta, texto) => {
     consulta.historico.push({ em: dataISO(), texto });
 };
@@ -91,7 +93,8 @@ const criar = async (req, res) => {
         status: configuracao.confirmacaoAutomatica ? "Confirmada" : "Agendada",
         respostaConfirmacao: configuracao.confirmacaoAutomatica ? "Confirmou" : "Sem resposta",
         observacoes: observacoes ?? "",
-        canal
+        canal,
+        ...(canal === "Recepção" && { pagamento: { status: "Pendente", valor: configuracao.valorConsulta } })
     });
     registrar(consulta, `Consulta criada (${canal.toLowerCase()})`);
     await consulta.save();
@@ -104,6 +107,17 @@ const criar = async (req, res) => {
         paciente: pacienteId,
         profissional: profissional._id
     });
+
+    if (consulta.pagamento?.status === "Pendente") {
+        await notificar({
+            titulo: "Pagamento da consulta",
+            texto: `Sua consulta de ${formatarDataBR(data)} às ${hora} foi registrada pela recepção. Valor: ${formatarValor(consulta.pagamento.valor)}.`,
+            publico: ["paciente"],
+            paciente: pacienteId,
+            consulta: consulta._id,
+            acao: "pagamento"
+        });
+    }
 
     res.status(201).json(consulta);
 };
@@ -170,7 +184,8 @@ const remarcar = async (req, res) => {
     if (!livres.includes(hora)) throw new AppError("Horário indisponível para este profissional", 409);
 
     const anterior = `${consulta.data} ${consulta.hora}`;
-    consulta.set({ data, hora, status: "Remarcada", lembreteEnviadoEm: null, respostaConfirmacao: "Sem resposta" });
+    // O lembrete não é zerado: cada consulta recebe no máximo um.
+    consulta.set({ data, hora, status: "Remarcada", respostaConfirmacao: "Sem resposta" });
     registrar(consulta, `Remarcada de ${anterior} para ${data} ${hora}`);
     await consulta.save();
 
@@ -188,6 +203,9 @@ const remarcar = async (req, res) => {
 
 const enviarLembrete = async (req, res) => {
     const consulta = await buscar(req, req.params.id);
+    if (consulta.lembreteEnviadoEm) {
+        throw new AppError("O lembrete desta consulta já foi enviado. Só é permitido um lembrete por consulta.", 409);
+    }
     consulta.lembreteEnviadoEm = dataISO();
     registrar(consulta, "Lembrete de confirmação enviado");
     await consulta.save();
@@ -234,7 +252,47 @@ const enviarLembretesPendentes = async (_req, res) => {
     res.json({ enviados: pendentes.length, consultas: pendentes });
 };
 
+const METODOS = ["Pix", "Cartão de crédito", "Cartão de débito"];
+
+// Pagamento simulado: não cobra nada de verdade, só registra como pago.
+const pagar = async (req, res) => {
+    const { metodo } = req.body ?? {};
+    if (!METODOS.includes(metodo)) throw new AppError(`Escolha a forma de pagamento: ${METODOS.join(", ")}`);
+
+    const consulta = await buscar(req, req.params.id);
+    if (consulta.pagamento?.status === "Pago") throw new AppError("Esta consulta já está paga", 409);
+    if (consulta.status === "Cancelada") throw new AppError("Consulta cancelada não pode ser paga", 409);
+    if (!consulta.pagamento?.status) {
+        const configuracao = await Configuracao.obter();
+        consulta.pagamento = { status: "Pendente", valor: configuracao.valorConsulta };
+    }
+
+    consulta.pagamento.status = "Pago";
+    consulta.pagamento.metodo = metodo;
+    consulta.pagamento.codigo = `PAG-${consulta.codigo}-${Date.now().toString(36).toUpperCase()}`;
+    consulta.pagamento.pagoEm = new Date();
+    registrar(consulta, `Pagamento de ${formatarValor(consulta.pagamento.valor)} via ${metodo}`);
+    await consulta.save();
+
+    const paciente = await Paciente.findById(consulta.paciente);
+    await notificar({
+        titulo: "Pagamento recebido",
+        texto: `${paciente?.nome ?? "Paciente"} pagou ${formatarValor(consulta.pagamento.valor)} via ${metodo} (consulta #${consulta.codigo}).`,
+        publico: ["recepcionista", "administrador"]
+    });
+    await notificar({
+        titulo: "Pagamento confirmado",
+        texto: `Recebemos ${formatarValor(consulta.pagamento.valor)} via ${metodo}. Comprovante: ${consulta.pagamento.codigo}.`,
+        publico: ["paciente"],
+        paciente: consulta.paciente,
+        consulta: consulta._id
+    });
+
+    res.json(consulta);
+};
+
 module.exports = {
+    pagar,
     listar,
     obter,
     horarios,
