@@ -25,13 +25,13 @@ const convenios = [
 ];
 
 const pacientes = [
-    { chave: "p1", nome: "Marina Costa", cpf: "123.456.789-00", telefone: "(11) 99842-1034", email: "paciente@demo.com", dataNascimento: "1992-04-12", convenio: "Saúde Total" },
-    { chave: "p2", nome: "Roberto Lima", cpf: "234.567.890-11", telefone: "(11) 97118-5220", email: "roberto@email.com", dataNascimento: "1985-09-03", convenio: "VidaMais" },
-    { chave: "p3", nome: "Camila Duarte", cpf: "345.678.901-22", telefone: "(11) 98720-4102", email: "camila@email.com", dataNascimento: "1990-01-27", convenio: "Particular" },
-    { chave: "p4", nome: "João Pedro Reis", cpf: "456.789.012-33", telefone: "(11) 96544-9091", email: "joao@email.com", dataNascimento: "1978-06-15", convenio: "VidaMais" },
-    { chave: "p5", nome: "Beatriz Souza", cpf: "567.890.123-44", telefone: "(11) 99940-2377", email: "beatriz@email.com", dataNascimento: "1999-11-08", convenio: "Particular", status: "Inativo" },
-    { chave: "p6", nome: "Sofia Almeida", cpf: "678.901.234-55", telefone: "(11) 98111-7742", email: "sofia@email.com", dataNascimento: "1996-02-19", convenio: "Saúde Total" },
-    { chave: "p7", nome: "Carlos Mendes", cpf: "789.012.345-66", telefone: "(11) 97402-3388", email: "carlos@email.com", dataNascimento: "1971-08-30", convenio: "Particular" }
+    { chave: "p1", nome: "Marina Costa", cpf: "123.456.789-09", telefone: "(11) 99842-1034", email: "paciente@demo.com", dataNascimento: "1992-04-12", convenio: "Saúde Total" },
+    { chave: "p2", nome: "Roberto Lima", cpf: "234.567.890-92", telefone: "(11) 97118-5220", email: "roberto@email.com", dataNascimento: "1985-09-03", convenio: "VidaMais" },
+    { chave: "p3", nome: "Camila Duarte", cpf: "345.678.901-75", telefone: "(11) 98720-4102", email: "camila@email.com", dataNascimento: "1990-01-27", convenio: "Particular" },
+    { chave: "p4", nome: "João Pedro Reis", cpf: "456.789.012-49", telefone: "(11) 96544-9091", email: "joao@email.com", dataNascimento: "1978-06-15", convenio: "VidaMais" },
+    { chave: "p5", nome: "Beatriz Souza", cpf: "567.890.123-03", telefone: "(11) 99940-2377", email: "beatriz@email.com", dataNascimento: "1999-11-08", convenio: "Particular", status: "Inativo" },
+    { chave: "p6", nome: "Sofia Almeida", cpf: "678.901.234-69", telefone: "(11) 98111-7742", email: "sofia@email.com", dataNascimento: "1996-02-19", convenio: "Saúde Total" },
+    { chave: "p7", nome: "Carlos Mendes", cpf: "789.012.345-05", telefone: "(11) 97402-3388", email: "carlos@email.com", dataNascimento: "1971-08-30", convenio: "Particular" }
 ];
 
 const profissionais = [
