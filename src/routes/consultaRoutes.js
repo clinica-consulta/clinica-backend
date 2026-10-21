@@ -15,5 +15,6 @@ rotas.get("/:id", controller.obter);
 rotas.patch("/:id/status", controller.alterarStatus);
 rotas.patch("/:id/remarcar", permitir(...EQUIPE, "paciente"), controller.remarcar);
 rotas.post("/:id/lembrete", permitir(...EQUIPE), controller.enviarLembrete);
+rotas.post("/:id/pagamento", permitir(...EQUIPE, "paciente"), controller.pagar);
 
 module.exports = rotas;

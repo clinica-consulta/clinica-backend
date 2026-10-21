@@ -21,7 +21,8 @@ const usuarioSchema = new mongoose.Schema(
         paciente: { type: mongoose.Schema.Types.ObjectId, ref: "Paciente", default: null },
         profissional: { type: mongoose.Schema.Types.ObjectId, ref: "Profissional", default: null },
         tokenRedefinicao: { type: String, select: false },
-        tokenRedefinicaoExpira: { type: Date, select: false }
+        tokenRedefinicaoExpira: { type: Date, select: false },
+        tentativasRedefinicao: { type: Number, default: 0, select: false }
     },
     { timestamps: true }
 );
@@ -45,6 +46,7 @@ usuarioSchema.set("toJSON", {
         delete ret.senha;
         delete ret.tokenRedefinicao;
         delete ret.tokenRedefinicaoExpira;
+        delete ret.tentativasRedefinicao;
         return ret;
     }
 });
