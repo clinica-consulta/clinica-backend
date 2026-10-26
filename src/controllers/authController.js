@@ -5,6 +5,7 @@ const Profissional = require("../models/Profissional");
 const AppError = require("../utils/AppError");
 const { gerarToken } = require("../middlewares/auth");
 const { enviarEmail } = require("../services/emailService");
+const { cpfValido, formatarCpf } = require("../utils/cpf");
 
 const respostaDeSessao = (usuario) => ({ token: gerarToken(usuario), usuario });
 
@@ -96,6 +97,16 @@ const recuperarSenha = async (req, res) => {
     const usuario = await Usuario.findOne({ email });
     if (!usuario) throw new AppError("Não encontramos nenhuma conta com este e-mail", 404);
     if (usuario.status === "Inativo") throw new AppError("Este acesso está desativado. Fale com a clínica.", 403);
+
+    // Paciente confirma a identidade com o CPF do cadastro. A equipe não tem CPF no sistema.
+    if (usuario.tipo === "paciente") {
+        const cpf = String(req.body?.cpf ?? "");
+        if (!cpfValido(cpf)) throw new AppError("Digite um CPF válido");
+        const paciente = await Paciente.findById(usuario.paciente);
+        if (!paciente || formatarCpf(paciente.cpf) !== formatarCpf(cpf)) {
+            throw new AppError("O CPF não confere com o cadastro deste e-mail", 400);
+        }
+    }
 
     const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
     usuario.tokenRedefinicao = hashCodigo(codigo);

@@ -6,6 +6,10 @@ const dataISO = (deslocamentoDias = 0) => {
     return new Intl.DateTimeFormat("en-CA", { timeZone: FUSO }).format(data);
 };
 
+// Hora atual (HH:MM) no fuso da clínica.
+const horaAtual = () =>
+    new Intl.DateTimeFormat("en-GB", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+
 const diaDaSemana = (dataIso) => new Date(`${dataIso}T12:00:00Z`).getUTCDay();
 
 const minutos = (hora) => {
@@ -30,4 +34,4 @@ const formatarDataBR = (dataIso) => {
     return `${dia}/${mes}/${ano}`;
 };
 
-module.exports = { dataISO, diaDaSemana, minutos, intervaloDeHorarios, formatarDataBR };
+module.exports = { dataISO, horaAtual, diaDaSemana, minutos, intervaloDeHorarios, formatarDataBR };

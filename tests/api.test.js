@@ -88,7 +88,10 @@ describe("autenticação", () => {
         const inexistente = await api().post("/api/auth/recuperar-senha").send({ email: "ninguem@teste.com" });
         assert.equal(inexistente.status, 404);
 
-        const pedido = await api().post("/api/auth/recuperar-senha").send({ email: "lucas@teste.com" });
+        const cpfErrado = await api().post("/api/auth/recuperar-senha").send({ email: "lucas@teste.com", cpf: "529.982.247-25" });
+        assert.equal(cpfErrado.status, 400);
+
+        const pedido = await api().post("/api/auth/recuperar-senha").send({ email: "lucas@teste.com", cpf: "99988877714" });
         assert.equal(pedido.status, 200);
         assert.match(pedido.body.codigoTeste, /^\d{6}$/);
 
@@ -222,24 +225,37 @@ describe("agendamento", () => {
         assert.ok(horarios.body.horarios.includes("11:00"));
     });
 
-    it("recepção registra a consulta e o paciente paga pela notificação", async () => {
+    it("cobra só paciente particular, depois que a consulta é realizada", async () => {
+        const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
+        const particular = pacientes.body.find((item) => item.convenio === "Particular" && item.status === "Ativo");
         const eu = await api().get("/api/auth/me").set(como("paciente"));
+
         const criada = await api()
             .post("/api/consultas")
             .set(como("recepcao"))
-            .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:00" });
+            .send({ paciente: particular.id, profissional: ana.id, data, hora: "13:00" });
         assert.equal(criada.status, 201);
-        assert.equal(criada.body.pagamento.status, "Pendente");
+        assert.equal(criada.body.pagamento?.status ?? null, null, "sem cobrança ao agendar");
 
-        const avisos = await api().get("/api/notificacoes").set(como("paciente"));
-        const cobranca = avisos.body.find((item) => item.acao === "pagamento" && item.consulta === criada.body.id);
-        assert.ok(cobranca, "paciente recebe o aviso de pagamento");
-
-        const paga = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("paciente")).send({ metodo: "Pix" });
+        const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
+        assert.equal(realizada.body.pagamento.status, "Pendente");
+        const paga = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
         assert.equal(paga.status, 200);
         assert.equal(paga.body.pagamento.status, "Pago");
-        const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("paciente")).send({ metodo: "Pix" });
+        const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
         assert.equal(denovo.status, 409);
+
+        const deConvenio = await api()
+            .post("/api/consultas")
+            .set(como("recepcao"))
+            .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:30" });
+        const semCobranca = await api().patch(`/api/consultas/${deConvenio.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
+        assert.equal(semCobranca.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
+    });
+
+    it("não oferece horários que já passaram", async () => {
+        const ontem = await api().get(`/api/consultas/horarios?profissional=${ana.id}&data=${dataISO(-1)}`).set(como("recepcao"));
+        assert.deepEqual(ontem.body.horarios, []);
     });
 
     it("só permite um lembrete por consulta", async () => {

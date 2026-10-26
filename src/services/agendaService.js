@@ -4,7 +4,7 @@ const Especialidade = require("../models/Especialidade");
 const Convenio = require("../models/Convenio");
 const Bloqueio = require("../models/Bloqueio");
 const Consulta = require("../models/Consulta");
-const { diaDaSemana, minutos, intervaloDeHorarios } = require("../utils/datas");
+const { dataISO, horaAtual, diaDaSemana, minutos, intervaloDeHorarios } = require("../utils/datas");
 
 // Regra de negócio: paciente ativo, especialidade ativa e coberta pelo convênio.
 const verificarElegibilidade = async (pacienteId, especialidade) => {
@@ -27,6 +27,11 @@ const verificarElegibilidade = async (pacienteId, especialidade) => {
 
 // Horários livres de 30 em 30 min: expediente do dia, menos consultas não canceladas e bloqueios.
 const horariosDisponiveis = async (profissionalId, data, ignorarConsultaId = null) => {
+    // Dia que já passou não tem horário; hoje, só a partir da hora atual.
+    const hoje = dataISO();
+    if (data < hoje) return [];
+    const agora = data === hoje ? minutos(horaAtual()) : -1;
+
     const profissional = await Profissional.findById(profissionalId);
     if (!profissional || !profissional.ativo) return [];
 
@@ -42,6 +47,7 @@ const horariosDisponiveis = async (profissionalId, data, ignorarConsultaId = nul
     ]);
 
     return intervaloDeHorarios(dia.inicio, dia.fim)
+        .filter((hora) => minutos(hora) > agora)
         .filter((hora) => !ocupadas.includes(hora))
         .filter((hora) => !bloqueios.some((b) => minutos(hora) >= minutos(b.horaInicio) && minutos(hora) < minutos(b.horaFim)));
 };
