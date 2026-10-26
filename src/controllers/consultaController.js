@@ -93,8 +93,7 @@ const criar = async (req, res) => {
         status: configuracao.confirmacaoAutomatica ? "Confirmada" : "Agendada",
         respostaConfirmacao: configuracao.confirmacaoAutomatica ? "Confirmou" : "Sem resposta",
         observacoes: observacoes ?? "",
-        canal,
-        ...(canal === "Recepção" && { pagamento: { status: "Pendente", valor: configuracao.valorConsulta } })
+        canal
     });
     registrar(consulta, `Consulta criada (${canal.toLowerCase()})`);
     await consulta.save();
@@ -107,17 +106,6 @@ const criar = async (req, res) => {
         paciente: pacienteId,
         profissional: profissional._id
     });
-
-    if (consulta.pagamento?.status === "Pendente") {
-        await notificar({
-            titulo: "Pagamento da consulta",
-            texto: `Sua consulta de ${formatarDataBR(data)} às ${hora} foi registrada pela recepção. Valor: ${formatarValor(consulta.pagamento.valor)}.`,
-            publico: ["paciente"],
-            paciente: pacienteId,
-            consulta: consulta._id,
-            acao: "pagamento"
-        });
-    }
 
     res.status(201).json(consulta);
 };
@@ -143,6 +131,13 @@ const alterarStatus = async (req, res) => {
     }
 
     consulta.status = status;
+    const pacienteDaConsulta = status === "Realizada" ? await Paciente.findById(consulta.paciente) : null;
+    // Só paciente particular paga na clínica; convênio não recebe cobrança.
+    const cobrar = status === "Realizada" && pacienteDaConsulta?.convenio === "Particular" && !consulta.pagamento?.status;
+    if (cobrar) {
+        const configuracao = await Configuracao.obter();
+        consulta.pagamento = { status: "Pendente", valor: configuracao.valorConsulta };
+    }
     if (status === "Confirmada") consulta.respostaConfirmacao = "Confirmou";
     if (status === "Cancelada") consulta.respostaConfirmacao = "Cancelou";
     registrar(consulta, observacao || `Status alterado para ${status}`);
@@ -157,6 +152,16 @@ const alterarStatus = async (req, res) => {
             publico: ["paciente", "recepcionista", "profissional"],
             paciente: consulta.paciente,
             profissional: consulta.profissional
+        });
+    }
+    if (cobrar) {
+        await notificar({
+            titulo: "Pagamento da consulta",
+            texto: `Sua consulta de ${quando} foi realizada. Valor: ${formatarValor(consulta.pagamento.valor)}. O pagamento já está liberado.`,
+            publico: ["paciente"],
+            paciente: consulta.paciente,
+            consulta: consulta._id,
+            acao: "pagamento"
         });
     }
     if (status === "Cancelada") {
@@ -261,10 +266,8 @@ const pagar = async (req, res) => {
 
     const consulta = await buscar(req, req.params.id);
     if (consulta.pagamento?.status === "Pago") throw new AppError("Esta consulta já está paga", 409);
-    if (consulta.status === "Cancelada") throw new AppError("Consulta cancelada não pode ser paga", 409);
-    if (!consulta.pagamento?.status) {
-        const configuracao = await Configuracao.obter();
-        consulta.pagamento = { status: "Pendente", valor: configuracao.valorConsulta };
+    if (consulta.pagamento?.status !== "Pendente") {
+        throw new AppError("Não há pagamento liberado para esta consulta. Ele é liberado para pacientes particulares depois que a consulta é realizada.", 409);
     }
 
     consulta.pagamento.status = "Pago";
