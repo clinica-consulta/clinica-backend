@@ -1,0 +1,26 @@
+# Deploy no Render (New > Blueprint). As variáveis com sync: false são preenchidas no painel.
+services:
+  - type: web
+    name: clinica-senai-api
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm install
+    # O setup cria o que faltar (clínica, convênios, especialidades e logins iniciais) e não apaga nada.
+    startCommand: npm run setup && npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: ADMIN_SENHA
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: SENHA_PADRAO
+        value: "123456"

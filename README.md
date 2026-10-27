@@ -59,6 +59,17 @@ npm test
 
 Os testes usam o banco `gestao-consultas-teste` em `mongodb://127.0.0.1:27017` (troque com `MONGODB_URI_TESTE`), então não apagam seus dados.
 
+## Deploy no Render
+
+O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**, escolha este repositório e preencha:
+
+- `MONGODB_URI`: endereço do MongoDB Atlas, terminando em `/clinica-senai`
+- `ADMIN_SENHA`: senha do administrador (marco@senai.org.br) criada no primeiro deploy
+- `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://clinic-harmony.vercel.app`
+
+`JWT_SECRET` é gerado pelo Render. A cada início, `npm run setup` cria o que faltar sem apagar dados.
+O plano grátis do Render bloqueia envio de e-mail (SMTP); sem e-mail, o código de redefinição aparece na tela.
+
 ## Rotas
 
 Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authorization: Bearer <token>`, recebido no login.
