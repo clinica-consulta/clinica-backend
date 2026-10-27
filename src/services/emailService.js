@@ -11,7 +11,11 @@ const enviarEmail = async ({ para, assunto, texto }) => {
         host: process.env.SMTP_HOST,
         port: porta,
         secure: porta === 465,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        // Sem resposta do servidor de e-mail em 10 s, desiste e mostra o código na tela.
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
     });
     await transporte.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: para, subject: assunto, text: texto });
     return true;
