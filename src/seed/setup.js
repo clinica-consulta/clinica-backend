@@ -4,8 +4,9 @@ const crypto = require("crypto");
 const readline = require("readline");
 
 // Na primeira vez, cria o .env local (ele não vai para o GitHub) com um segredo aleatório para os logins.
+// Em hospedagem (Render), as variáveis já vêm do painel e o .env não é criado.
 const ARQUIVO_ENV = path.resolve(__dirname, "../../.env");
-if (!fs.existsSync(ARQUIVO_ENV)) {
+if (!fs.existsSync(ARQUIVO_ENV) && !process.env.MONGODB_URI) {
     fs.writeFileSync(
         ARQUIVO_ENV,
         [
