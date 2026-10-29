@@ -48,9 +48,11 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 | Recepção | `recepcao@senai.org.br` | `123456` |
 | Profissional | `carlos.mendes@senai.org.br` | `123456` |
 
+O setup também monta o corpo clínico: 12 especialidades (Clínica geral, Cardiologia, Pediatria, Dermatologia, Ortopedia, Ginecologia, Oftalmologia, Neurologia, Psiquiatria, Endocrinologia, Otorrinolaringologia e Urologia) com 2 médicos ativos em cada uma. Os médicos entram com o e-mail `nome.sobrenome@senai.org.br` (por exemplo `ana.martins@senai.org.br`) e a senha `123456`. A lista fica em `src/seed/catalogo.js`.
+
 Todo o resto é cadastrado **pelo site**: o administrador cria médicos, recepcionistas, especialidades e convênios, e os pacientes se cadastram em "Cadastre-se" (ou pela recepção). Cada pessoa troca a própria senha clicando no nome, no topo do site.
 
-`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Em um banco já configurado, `npm run setup` não altera nada; use `npm run setup -- --forcar` para recriar os acessos iniciais que faltarem.
+`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Em um banco já configurado, `npm run setup` mantém acessos e configurações e só aplica as atualizações de dados que ainda não rodaram naquele banco (cada uma roda uma única vez, então médicos excluídos pelo site não voltam); use `npm run setup -- --forcar` para recriar os acessos iniciais que faltarem.
 
 ### Testes
 
@@ -68,7 +70,7 @@ O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**,
 - `ADMIN_SENHA`: senha do administrador (marco@senai.org.br) criada no primeiro deploy
 - `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://clinic-harmony.vercel.app`
 
-`JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e não altera nada.
+`JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e só aplica as atualizações de dados novas (como o corpo clínico de `src/seed/catalogo.js`), uma única vez.
 O plano grátis do Render bloqueia envio de e-mail por SMTP. Para o código de redefinição chegar por e-mail, use o Brevo: crie uma chave de API, verifique o e-mail remetente no Brevo e preencha `BREVO_API_KEY` e `EMAIL_REMETENTE` no Render. Sem isso, o código aparece na tela.
 
 ## Rotas

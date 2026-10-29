@@ -30,10 +30,11 @@ const Profissional = require("../models/Profissional");
 const Especialidade = require("../models/Especialidade");
 const Convenio = require("../models/Convenio");
 const Configuracao = require("../models/Configuracao");
+const { aplicarAtualizacoes } = require("./catalogo");
 
 // Cria o banco da Clínica Senai com os acessos iniciais.
 // A senha do administrador é pedida no terminal na primeira vez (ou lida de ADMIN_SENHA no .env) e nunca fica no código.
-//   npm run setup              -> configura um banco novo; se já estiver configurado, não altera nada
+//   npm run setup              -> configura um banco novo; se já estiver configurado, só aplica as atualizações novas
 //   npm run setup -- --forcar  -> recria o que faltar mesmo em banco já configurado (quem já existe mantém a senha)
 //   npm run setup -- --limpar  -> APAGA o banco inteiro antes
 // Pacientes, médicos e demais cadastros são feitos depois pelo site, com o login do administrador.
@@ -93,6 +94,14 @@ const garantirUsuario = async ({ pedirSenha, ...dados }, tipo, extras = {}) => {
     return { usuario, criado: true, senhaPropria: Boolean(pedirSenha) };
 };
 
+const mostrarAtualizacoes = (novas) => {
+    for (const { descricao, resumo } of novas) {
+        console.log(`Atualização aplicada: ${descricao}.`);
+        if (resumo.especialidades.length) console.log(`  Especialidades novas: ${resumo.especialidades.join(", ")}`);
+        if (resumo.medicos.length) console.log(`  Médicos novos (senha: ${SENHA_PADRAO()}):\n    ${resumo.medicos.join("\n    ")}`);
+    }
+};
+
 const executar = async () => {
     try {
         await conectarBanco();
@@ -103,10 +112,13 @@ const executar = async () => {
         }
         await Promise.all(Object.values(mongoose.models).map((modelo) => modelo.syncIndexes()));
 
-        // Banco já configurado: não mexe em nada, para não desfazer o que foi alterado pelo site
-        // (médicos excluídos, usuários desativados, configurações da clínica). Use --forcar para recriar o que faltar.
+        // Banco já configurado: não mexe no que foi alterado pelo site (médicos excluídos, usuários desativados,
+        // configurações da clínica). Só aplica, uma única vez, as atualizações de dados que ainda não rodaram.
+        // Use --forcar para recriar os acessos iniciais que faltarem.
         if (!process.argv.includes("--forcar") && (await Usuario.exists({ tipo: "administrador" }))) {
-            console.log(`Banco "${mongoose.connection.name}" já configurado. Nada foi alterado (use "npm run setup -- --forcar" para recriar os acessos iniciais).`);
+            const novas = await aplicarAtualizacoes({ senha: SENHA_PADRAO() });
+            console.log(`Banco "${mongoose.connection.name}" já configurado. Acessos e configurações mantidos.`);
+            mostrarAtualizacoes(novas);
             return;
         }
 
@@ -134,8 +146,11 @@ const executar = async () => {
             registrar("Profissional", await garantirUsuario(item, "profissional", { profissional: profissional._id }));
         }
 
+        const novas = await aplicarAtualizacoes({ senha: SENHA_PADRAO() });
+
         console.log(`\nPronto! Banco "${mongoose.connection.name}" da ${DADOS.clinica.nome}. Acessos:`);
         console.log(resumo.join("\n"));
+        mostrarAtualizacoes(novas);
         console.log("\nPacientes se cadastram pelo site. Médicos, recepcionistas e convênios novos: entre como administrador.\n");
     } catch (erro) {
         console.error("Erro no setup:", erro.message);
