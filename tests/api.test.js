@@ -299,6 +299,29 @@ describe("cadastros da administração", () => {
         assert.equal(criado.status, 201);
     });
 
+    it("administrador exclui médico sem consultas e o acesso dele some", async () => {
+        const criado = await api().post("/api/profissionais").set(como("admin")).send({
+            nome: "Dr. Para Excluir",
+            especialidade: "Pediatria",
+            crm: "CRM 3",
+            email: "excluir.medico@clinica.com"
+        });
+        const pelaRecepcao = await api().delete(`/api/profissionais/${criado.body.id}`).set(como("recepcao"));
+        assert.equal(pelaRecepcao.status, 403);
+        const excluido = await api().delete(`/api/profissionais/${criado.body.id}`).set(como("admin"));
+        assert.equal(excluido.status, 204);
+        const login = await api().post("/api/auth/login").send({ email: "excluir.medico@clinica.com", senha: "123456" });
+        assert.equal(login.status, 401);
+    });
+
+    it("não exclui médico com consultas registradas", async () => {
+        const profissionais = await api().get("/api/profissionais").set(como("admin"));
+        const comConsultas = profissionais.body.find((item) => item.email === "profissional@demo.com");
+        const resposta = await api().delete(`/api/profissionais/${comConsultas.id}`).set(como("admin"));
+        assert.equal(resposta.status, 409);
+        assert.match(resposta.body.mensagem, /desative/);
+    });
+
     it("desativar paciente bloqueia o login dele", async () => {
         const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
         const carlos = pacientes.body.find((item) => item.email === "carlos@email.com");
