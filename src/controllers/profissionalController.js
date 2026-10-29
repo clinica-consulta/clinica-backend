@@ -1,5 +1,7 @@
 const Profissional = require("../models/Profissional");
 const Usuario = require("../models/Usuario");
+const Consulta = require("../models/Consulta");
+const Bloqueio = require("../models/Bloqueio");
 const AppError = require("../utils/AppError");
 const { escolherCampos } = require("../utils/texto");
 
@@ -89,4 +91,21 @@ const definirDisponibilidade = async (req, res) => {
     res.json(profissional);
 };
 
-module.exports = { listar, obter, criar, atualizar, alternarStatus, definirDisponibilidade };
+// Exclui o médico, o acesso dele e os bloqueios. Com consultas registradas, a exclusão é recusada para não perder o histórico.
+const excluir = async (req, res) => {
+    const profissional = await buscar(req.params.id);
+    const consultas = await Consulta.countDocuments({ profissional: profissional._id });
+    if (consultas > 0) {
+        throw new AppError(
+            `Este médico tem ${consultas} consulta(s) registrada(s). Para manter o histórico dos pacientes, desative o médico em vez de excluir.`,
+            409
+        );
+    }
+
+    await Bloqueio.deleteMany({ profissional: profissional._id });
+    await Usuario.deleteOne({ profissional: profissional._id });
+    await profissional.deleteOne();
+    res.status(204).end();
+};
+
+module.exports = { listar, obter, criar, atualizar, alternarStatus, definirDisponibilidade, excluir };
