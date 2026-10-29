@@ -12,6 +12,7 @@ rotas.get("/:id", controller.obter);
 rotas.post("/", permitir(...EQUIPE), controller.criar);
 rotas.put("/:id", permitir(...EQUIPE, "profissional"), controller.atualizar);
 rotas.patch("/:id/status", permitir(...EQUIPE), controller.alternarStatus);
+rotas.delete("/:id", permitir("administrador"), controller.excluir);
 rotas.put("/:id/disponibilidade/:dia", permitir(...EQUIPE), controller.definirDisponibilidade);
 
 module.exports = rotas;
