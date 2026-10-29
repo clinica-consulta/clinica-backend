@@ -33,7 +33,8 @@ const Configuracao = require("../models/Configuracao");
 
 // Cria o banco da Clínica Senai com os acessos iniciais.
 // A senha do administrador é pedida no terminal na primeira vez (ou lida de ADMIN_SENHA no .env) e nunca fica no código.
-//   npm run setup              -> cria o que faltar (quem já existe mantém a senha)
+//   npm run setup              -> configura um banco novo; se já estiver configurado, não altera nada
+//   npm run setup -- --forcar  -> recria o que faltar mesmo em banco já configurado (quem já existe mantém a senha)
 //   npm run setup -- --limpar  -> APAGA o banco inteiro antes
 // Pacientes, médicos e demais cadastros são feitos depois pelo site, com o login do administrador.
 
@@ -101,6 +102,13 @@ const executar = async () => {
             await mongoose.connection.dropDatabase();
         }
         await Promise.all(Object.values(mongoose.models).map((modelo) => modelo.syncIndexes()));
+
+        // Banco já configurado: não mexe em nada, para não desfazer o que foi alterado pelo site
+        // (médicos excluídos, usuários desativados, configurações da clínica). Use --forcar para recriar o que faltar.
+        if (!process.argv.includes("--forcar") && (await Usuario.exists({ tipo: "administrador" }))) {
+            console.log(`Banco "${mongoose.connection.name}" já configurado. Nada foi alterado (use "npm run setup -- --forcar" para recriar os acessos iniciais).`);
+            return;
+        }
 
         const configuracao = await Configuracao.obter();
         configuracao.set(DADOS.clinica);
