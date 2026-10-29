@@ -36,6 +36,7 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 | `CORS_ORIGIN` | vazio (libera qualquer origem) |
 | `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | vazios. Preencha para o código de redefinição de senha ir por e-mail; sem eles, o código aparece na tela e no terminal da API |
+| `BREVO_API_KEY`, `EMAIL_REMETENTE`, `EMAIL_NOME` | vazios. Alternativa ao SMTP que envia pela API do Brevo (HTTPS); use no Render grátis. Tem prioridade sobre o SMTP |
 
 ### Banco e acessos iniciais
 
@@ -68,7 +69,7 @@ O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**,
 - `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://clinic-harmony.vercel.app`
 
 `JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e não altera nada.
-O plano grátis do Render bloqueia envio de e-mail (SMTP); sem e-mail, o código de redefinição aparece na tela.
+O plano grátis do Render bloqueia envio de e-mail por SMTP. Para o código de redefinição chegar por e-mail, use o Brevo: crie uma chave de API, verifique o e-mail remetente no Brevo e preencha `BREVO_API_KEY` e `EMAIL_REMETENTE` no Render. Sem isso, o código aparece na tela.
 
 ## Rotas
 
