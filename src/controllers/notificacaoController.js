@@ -1,4 +1,7 @@
+const mongoose = require("mongoose");
 const Notificacao = require("../models/Notificacao");
+const Paciente = require("../models/Paciente");
+const Consulta = require("../models/Consulta");
 const AppError = require("../utils/AppError");
 const { TIPOS } = require("../models/Usuario");
 const { notificar } = require("../services/notificacaoService");
@@ -11,13 +14,39 @@ const listar = async (req, res) => {
     res.json(notificacoes.map((item) => item.paraUsuario(req.usuario)));
 };
 
+// Aviso para um paciente só (ex.: atestado ou receita emitidos pelo médico).
+const pacienteDestino = async (req, id) => {
+    if (!mongoose.isValidObjectId(id) || !(await Paciente.exists({ _id: id }))) {
+        throw new AppError("Paciente não encontrado", 404);
+    }
+    // O médico só envia documentos para pacientes que atendeu ou vai atender.
+    if (req.usuario.tipo === "profissional" && !(await Consulta.exists({ paciente: id, profissional: req.usuario.profissional }))) {
+        throw new AppError("Você só pode enviar documentos para os seus pacientes", 403);
+    }
+    return id;
+};
+
 const criar = async (req, res) => {
-    const { titulo, texto, publico } = req.body ?? {};
+    const { titulo, texto, publico, paciente, acao } = req.body ?? {};
     const perfis = Array.isArray(publico) ? publico : [];
     if (!perfis.length || perfis.some((tipo) => !TIPOS.includes(tipo))) {
         throw new AppError(`Informe o público com os perfis: ${TIPOS.join(", ")}`);
     }
-    const notificacao = await notificar({ titulo, texto, publico: perfis });
+    const destino = paciente ? await pacienteDestino(req, paciente) : null;
+    if (destino && (perfis.length !== 1 || perfis[0] !== "paciente")) {
+        throw new AppError("Aviso para um paciente deve ter só o público paciente");
+    }
+    // Sem paciente escolhido, o médico só fala com a equipe (não com todos os pacientes).
+    if (!destino && req.usuario.tipo === "profissional" && perfis.includes("paciente")) {
+        throw new AppError("Escolha o paciente que vai receber o aviso");
+    }
+    const notificacao = await notificar({
+        titulo,
+        texto,
+        publico: perfis,
+        paciente: destino,
+        acao: destino && acao === "documento" ? "documento" : ""
+    });
     if (!notificacao) throw new AppError("Informe título e texto");
     res.status(201).json(notificacao.paraUsuario(req.usuario));
 };
