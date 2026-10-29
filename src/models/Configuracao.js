@@ -9,7 +9,9 @@ const configuracaoSchema = new mongoose.Schema(
         email: { type: String, default: "" },
         antecedenciaLembreteHoras: { type: Number, default: 24, min: 1 },
         confirmacaoAutomatica: { type: Boolean, default: false },
-        valorConsulta: { type: Number, default: 150, min: 0 }
+        valorConsulta: { type: Number, default: 150, min: 0 },
+        // Atualizações de dados já aplicadas pelo setup (ver seed/catalogo.js).
+        atualizacoes: { type: [String], default: [] }
     },
     { timestamps: true }
 );
