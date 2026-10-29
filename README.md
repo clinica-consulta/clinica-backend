@@ -49,7 +49,7 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 
 Todo o resto é cadastrado **pelo site**: o administrador cria médicos, recepcionistas, especialidades e convênios, e os pacientes se cadastram em "Cadastre-se" (ou pela recepção). Cada pessoa troca a própria senha clicando no nome, no topo do site.
 
-`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Sem `--limpar`, só cria o que faltar.
+`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Em um banco já configurado, `npm run setup` não altera nada; use `npm run setup -- --forcar` para recriar os acessos iniciais que faltarem.
 
 ### Testes
 
@@ -67,7 +67,7 @@ O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**,
 - `ADMIN_SENHA`: senha do administrador (marco@senai.org.br) criada no primeiro deploy
 - `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://clinic-harmony.vercel.app`
 
-`JWT_SECRET` é gerado pelo Render. A cada início, `npm run setup` cria o que faltar sem apagar dados.
+`JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e não altera nada.
 O plano grátis do Render bloqueia envio de e-mail (SMTP); sem e-mail, o código de redefinição aparece na tela.
 
 ## Rotas
