@@ -358,3 +358,45 @@ describe("perfil do usuário logado", () => {
         assert.equal(login.status, 200);
     });
 });
+
+describe("atualizações de dados do setup", () => {
+    it("completa 2 médicos por especialidade uma única vez", async () => {
+        const { aplicarAtualizacoes, ESPECIALIDADES } = require("../src/seed/catalogo");
+        const Profissional = require("../src/models/Profissional");
+        const Especialidade = require("../src/models/Especialidade");
+
+        const primeira = await aplicarAtualizacoes({ senha: "123456" });
+        assert.equal(primeira.length, 1);
+        for (const item of ESPECIALIDADES) {
+            assert.ok(await Especialidade.exists({ nome: item.nome }), item.nome);
+        }
+        for (const especialidade of await Especialidade.find({ ativo: true })) {
+            const ativos = await Profissional.countDocuments({ especialidade: especialidade.nome, ativo: true });
+            assert.ok(ativos >= 2, `${especialidade.nome} tem ${ativos} médico(s)`);
+        }
+        const login = await api().post("/api/auth/login").send({ email: "eduardo.rocha@senai.org.br", senha: "123456" });
+        assert.equal(login.status, 200);
+
+        const total = await Profissional.countDocuments();
+        await Profissional.deleteOne({ email: "eduardo.rocha@senai.org.br" });
+        assert.deepEqual(await aplicarAtualizacoes({ senha: "123456" }), []);
+        assert.equal(await Profissional.countDocuments(), total - 1);
+    });
+});
+
+describe("documentos do médico", () => {
+    it("envia atestado só para o paciente escolhido", async () => {
+        const eu = await api().get("/api/auth/me").set(como("paciente"));
+        const documento = await api()
+            .post("/api/notificacoes")
+            .set(como("profissional"))
+            .send({ titulo: "Atestado médico", texto: "Atesto para os devidos fins.", publico: ["paciente"], paciente: eu.body.paciente, acao: "documento" });
+        assert.equal(documento.status, 201);
+
+        const avisos = await api().get("/api/notificacoes").set(como("paciente"));
+        assert.ok(avisos.body.some((item) => item.titulo === "Atestado médico" && item.acao === "documento"));
+
+        const paraTodos = await api().post("/api/notificacoes").set(como("profissional")).send({ titulo: "Oi", texto: "Para todos", publico: ["paciente"] });
+        assert.equal(paraTodos.status, 400);
+    });
+});
