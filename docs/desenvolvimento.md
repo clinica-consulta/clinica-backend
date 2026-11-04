@@ -1,0 +1,61 @@
+# Guia de desenvolvimento
+
+Instruções técnicas para rodar, testar e publicar a API. A documentação do projeto está no [README](../README.md).
+
+## Como rodar
+
+Precisa do Node.js 20+ e do MongoDB rodando na máquina (o mesmo que aparece no MongoDB Compass em `mongodb://127.0.0.1:27017`).
+
+```bash
+npm install
+npm run setup     # cria o .env e o banco "clinica-senai"; pede a senha do administrador
+npm run dev       # sobe a API em http://localhost:3000 (com recarga automática)
+```
+
+Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo aleatório para os logins. Ele nunca vai para o GitHub. Para mudar algo, edite esse arquivo:
+
+| Variável | Padrão |
+|---|---|
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/clinica-senai` (troque pelo endereço do Atlas, se for usar) |
+| `PORT` | `3000` |
+| `JWT_SECRET` | gerado aleatoriamente pelo setup |
+| `CORS_ORIGIN` | vazio (libera qualquer origem) |
+| `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | vazios. Preencha para o código de redefinição de senha ir por e-mail; sem eles, o código aparece na tela e no terminal da API |
+| `BREVO_API_KEY`, `EMAIL_REMETENTE`, `EMAIL_NOME` | vazios. Alternativa ao SMTP que envia pela API do Brevo (HTTPS); use no Render grátis. Tem prioridade sobre o SMTP |
+
+### Banco e acessos iniciais
+
+`npm run setup` cria a **Clínica Senai** (dados fictícios), as especialidades Clínica geral, Cardiologia e Pediatria, os convênios Particular e Unimed, e três acessos:
+
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Administrador | `marco@senai.org.br` | a que você digitar no terminal durante o setup |
+| Recepção | `recepcao@senai.org.br` | `123456` |
+| Profissional | `carlos.mendes@senai.org.br` | `123456` |
+
+O setup também monta o corpo clínico: 12 especialidades (Clínica geral, Cardiologia, Pediatria, Dermatologia, Ortopedia, Ginecologia, Oftalmologia, Neurologia, Psiquiatria, Endocrinologia, Otorrinolaringologia e Urologia) com 2 médicos ativos em cada uma. Os médicos entram com o e-mail `nome.sobrenome@senai.org.br` (por exemplo `ana.martins@senai.org.br`) e a senha `123456`. A lista fica em `src/seed/catalogo.js`.
+
+Todo o resto é cadastrado **pelo site**: o administrador cria médicos, recepcionistas, especialidades e convênios, e os pacientes se cadastram em "Cadastre-se" (ou pela recepção). Cada pessoa troca a própria senha clicando no nome, no topo do site.
+
+`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Em um banco já configurado, `npm run setup` mantém acessos e configurações e só aplica as atualizações de dados que ainda não rodaram naquele banco (cada uma roda uma única vez, então médicos excluídos pelo site não voltam); use `npm run setup -- --forcar` para recriar os acessos iniciais que faltarem.
+
+### Testes
+
+```bash
+npm test
+```
+
+Os testes usam o banco `gestao-consultas-teste` em `mongodb://127.0.0.1:27017` (troque com `MONGODB_URI_TESTE`), então não apagam seus dados.
+
+## Deploy no Render
+
+O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**, escolha este repositório e preencha:
+
+- `MONGODB_URI`: endereço do MongoDB Atlas, terminando em `/clinica-senai`
+- `ADMIN_SENHA`: senha do administrador (marco@senai.org.br) criada no primeiro deploy
+- `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://gestao-consultas.vercel.app`
+
+`JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e só aplica as atualizações de dados novas (como o corpo clínico de `src/seed/catalogo.js`), uma única vez.
+O plano grátis do Render bloqueia envio de e-mail por SMTP. Para o código de redefinição chegar por e-mail, use o Brevo: crie uma chave de API, verifique o e-mail remetente no Brevo e preencha `BREVO_API_KEY` e `EMAIL_REMETENTE` no Render. Sem isso, o código aparece na tela.
+
