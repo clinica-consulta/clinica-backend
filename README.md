@@ -1,150 +1,256 @@
-# Clínica Médica - API Backend
+<div align="center">
 
-> **Projeto Integrador - SENAI**
-> API para gestão de consultas, agendamentos e controle de pacientes em clínicas médicas.
+# 🩺 Gestão de Consultas · API
+
+**Plataforma de agendamento e gestão de consultas para clínicas médicas**
+
+Projeto Integrador · SENAI
+
+![Versão](https://img.shields.io/github/v/release/clinica-consulta/clinica-backend?label=vers%C3%A3o&color=0e8a16)
+![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?logo=mongodb&logoColor=white)
+![Render](https://img.shields.io/badge/Publicado%20no-Render-46E3B7?logo=render&logoColor=white)
+
+[Site](https://gestao-consultas.vercel.app) · [API](https://clinica-senai-api.onrender.com) · [Interface web](https://github.com/clinica-consulta/clinica-frontend) · [Versões](https://github.com/clinica-consulta/clinica-backend/releases)
+
+</div>
 
 ---
 
-## Objetivo
-Centralizar a marcação de consultas, organizar a agenda médica e enviar lembretes aos pacientes para reduzir faltas.
+## 📖 Sobre o projeto
 
-## Tecnologias
-- **Node.js** (20 ou superior) + **Express 5**
-- **MongoDB** com **Mongoose**
-- **JWT** para login e **bcryptjs** para as senhas
-- Testes com **node:test** + **supertest**
+A **Gestão de Consultas** centraliza o dia a dia de uma clínica médica: marcação de consultas, agenda dos médicos, cadastro de pacientes, convênios, lembretes e documentos médicos. O objetivo é organizar a agenda, evitar horários duplicados e **reduzir as faltas** com confirmações e lembretes.
 
-Front-end que consome esta API: [clinic-harmony](https://github.com/mocotoTonin/clinic-harmony).
+Este repositório é a **API REST** da plataforma. Ela guarda os dados, aplica as regras de negócio e controla o que cada perfil pode fazer. A interface usada por pacientes e pela equipe está em [clinica-frontend](https://github.com/clinica-consulta/clinica-frontend).
 
-## Como rodar
+## 👥 Perfis de acesso
 
-Precisa do Node.js 20+ e do MongoDB rodando na máquina (o mesmo que aparece no MongoDB Compass em `mongodb://127.0.0.1:27017`).
-
-```bash
-npm install
-npm run setup     # cria o .env e o banco "clinica-senai"; pede a senha do administrador
-npm run dev       # sobe a API em http://localhost:3000 (com recarga automática)
-```
-
-Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo aleatório para os logins. Ele nunca vai para o GitHub. Para mudar algo, edite esse arquivo:
-
-| Variável | Padrão |
-|---|---|
-| `MONGODB_URI` | `mongodb://127.0.0.1:27017/clinica-senai` (troque pelo endereço do Atlas, se for usar) |
-| `PORT` | `3000` |
-| `JWT_SECRET` | gerado aleatoriamente pelo setup |
-| `CORS_ORIGIN` | vazio (libera qualquer origem) |
-| `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | vazios. Preencha para o código de redefinição de senha ir por e-mail; sem eles, o código aparece na tela e no terminal da API |
-| `BREVO_API_KEY`, `EMAIL_REMETENTE`, `EMAIL_NOME` | vazios. Alternativa ao SMTP que envia pela API do Brevo (HTTPS); use no Render grátis. Tem prioridade sobre o SMTP |
-
-### Banco e acessos iniciais
-
-`npm run setup` cria a **Clínica Senai** (dados fictícios), as especialidades Clínica geral, Cardiologia e Pediatria, os convênios Particular e Unimed, e três acessos:
-
-| Perfil | E-mail | Senha |
+| Perfil | Quem é | O que faz |
 |---|---|---|
-| Administrador | `marco@senai.org.br` | a que você digitar no terminal durante o setup |
-| Recepção | `recepcao@senai.org.br` | `123456` |
-| Profissional | `carlos.mendes@senai.org.br` | `123456` |
+| 🧑 **Paciente** | Quem se cadastra pelo site ou pela recepção | Agenda, confirma, remarca e cancela as próprias consultas, paga a consulta particular e recebe avisos e documentos |
+| 🗂️ **Recepção** | Equipe de atendimento | Cadastra pacientes e médicos, agenda pela clínica, envia lembretes, cuida da fila de espera e dos bloqueios de agenda |
+| 🩺 **Profissional** | Médico do corpo clínico | Vê a própria agenda e os pacientes, registra atendimento ou ausência e envia atestados e receitas |
+| ⚙️ **Administrador** | Gestão da clínica | Tudo o que a recepção faz, mais equipe interna, especialidades, convênios, expedientes, configurações e relatórios |
 
-O setup também monta o corpo clínico: 12 especialidades (Clínica geral, Cardiologia, Pediatria, Dermatologia, Ortopedia, Ginecologia, Oftalmologia, Neurologia, Psiquiatria, Endocrinologia, Otorrinolaringologia e Urologia) com 2 médicos ativos em cada uma. Os médicos entram com o e-mail `nome.sobrenome@senai.org.br` (por exemplo `ana.martins@senai.org.br`) e a senha `123456`. A lista fica em `src/seed/catalogo.js`.
+## ✨ Funcionalidades
 
-Todo o resto é cadastrado **pelo site**: o administrador cria médicos, recepcionistas, especialidades e convênios, e os pacientes se cadastram em "Cadastre-se" (ou pela recepção). Cada pessoa troca a própria senha clicando no nome, no topo do site.
+### 🔐 Acesso e conta
+- Login com e-mail e senha, com sessão por token JWT e senhas guardadas com hash.
+- Cadastro público do paciente, com validação de CPF e escolha do convênio.
+- Cada pessoa edita o próprio nome e telefone e troca a própria senha.
+- Redefinição de senha por **código de 6 dígitos** enviado por e-mail, válido por 15 minutos, com até 5 tentativas e confirmação de CPF.
 
-`npm run setup -- --limpar` **apaga o banco inteiro** e cria tudo de novo. Em um banco já configurado, `npm run setup` mantém acessos e configurações e só aplica as atualizações de dados que ainda não rodaram naquele banco (cada uma roda uma única vez, então médicos excluídos pelo site não voltam); use `npm run setup -- --forcar` para recriar os acessos iniciais que faltarem.
+### 🧑 Pacientes
+- Cadastro completo (nome, CPF, nascimento, contato e convênio) feito pelo paciente ou pela equipe.
+- O paciente enxerga e altera somente a própria ficha.
+- Desativar um paciente preserva o histórico e impede novos agendamentos.
 
-### Testes
+### 🩺 Corpo clínico
+- Cadastro de médicos com especialidade, CRM, contato e cor na agenda; cada médico recebe um acesso próprio.
+- **12 especialidades** com 2 médicos cada: Clínica geral, Cardiologia, Pediatria, Dermatologia, Ortopedia, Ginecologia, Oftalmologia, Neurologia, Psiquiatria, Endocrinologia, Otorrinolaringologia e Urologia.
+- Especialidades e convênios gerenciados pelo administrador; cada convênio define as especialidades que cobre.
+- Exclusão de médico cadastrado por engano, permitida só quando ele não tem consultas.
 
-```bash
-npm test
+### 📅 Agenda
+- Expediente semanal de cada médico, dia a dia.
+- Bloqueio de um horário ou de um período inteiro (férias, congressos, manutenção).
+- Cálculo automático dos **horários livres de 30 em 30 minutos**, descontando consultas e bloqueios; no dia de hoje só aparecem horários futuros.
+
+### 🗓️ Consultas
+- Agendamento pelo paciente ou pela recepção, com **código sequencial** e registro do canal de origem.
+- Verificação de **elegibilidade** antes de agendar: paciente ativo, especialidade ativa e coberta pelo convênio.
+- Confirmação, remarcação e cancelamento; cancelar libera o horário na hora.
+- Registro de consulta **realizada** ou **não compareceu** pela equipe.
+- **Histórico de alterações** de cada consulta, com data e autor.
+- Filtros por data, período, médico, paciente, status e especialidade.
+
+### 💳 Pagamentos
+- Pagamento simulado da consulta do convênio **Particular** por Pix, cartão de crédito ou cartão de débito.
+- Liberado depois que a consulta é registrada como realizada, com o valor definido nas configurações da clínica.
+
+### 🔔 Notificações e lembretes
+- Central de avisos por perfil, por paciente ou por médico, com controle de lidos e não lidos.
+- Avisos automáticos em agendamentos, confirmações, remarcações, cancelamentos, pagamentos, convites da fila de espera e bloqueios de agenda.
+- **Lembretes** de consulta individuais ou em lote, no máximo um por consulta.
+- Envio de e-mail pela API do Brevo ou por SMTP.
+
+### 📄 Documentos médicos
+- O médico envia **atestado** ou **receita** ao paciente, que recebe nas notificações e pode imprimir.
+
+### ⏳ Fila de espera
+- Pacientes aguardando vaga por especialidade, com prioridade **Alta** ou **Normal**.
+- Convite ao paciente quando um horário abre.
+
+### 📊 Relatórios e administração
+- Indicadores do painel: consultas por status, presença, faltas, cancelamentos, movimento da semana e ocupação da agenda de cada médico.
+- Gestão da equipe interna (recepção e administradores).
+- Configurações da clínica: nome, CNPJ, contato, antecedência do lembrete, confirmação automática e valor da consulta particular.
+
+## 📐 Regras de negócio
+
+| Regra | Como funciona |
+|---|---|
+| Horários | Intervalos de 30 minutos dentro do expediente, sem consultas ativas nem bloqueios |
+| Agendamento | Só com paciente ativo, especialidade ativa e coberta pelo convênio |
+| Cancelamento | Libera o horário imediatamente para outro paciente |
+| Remarcação | A confirmação volta para "Sem resposta" até o paciente confirmar a nova data |
+| Lembrete | Um único lembrete por consulta |
+| Pagamento | Só para o convênio Particular e depois da consulta realizada |
+| Desativação | Paciente, médico ou especialidade desativados mantêm o histórico e deixam de aceitar agendamentos |
+| Exclusão de médico | Permitida apenas sem consultas registradas |
+| Histórico | Toda alteração da consulta fica registrada |
+
+### Ciclo da consulta
+
+```mermaid
+stateDiagram-v2
+    [*] --> Agendada
+    Agendada --> Confirmada: paciente confirma
+    Agendada --> Remarcada: nova data
+    Confirmada --> Remarcada: nova data
+    Remarcada --> Confirmada: paciente confirma
+    Agendada --> Cancelada
+    Confirmada --> Cancelada
+    Remarcada --> Cancelada
+    Confirmada --> Realizada: equipe registra
+    Confirmada --> NaoCompareceu: equipe registra
+    Agendada --> Realizada
+    Agendada --> NaoCompareceu
+    Realizada --> [*]
+    Cancelada --> [*]
+    NaoCompareceu --> [*]
+    NaoCompareceu: Não compareceu
 ```
 
-Os testes usam o banco `gestao-consultas-teste` em `mongodb://127.0.0.1:27017` (troque com `MONGODB_URI_TESTE`), então não apagam seus dados.
+## 🏗️ Arquitetura
 
-## Deploy no Render
+```mermaid
+flowchart LR
+    U[Pacientes e equipe] --> F[Interface web<br/>React · Vercel]
+    F -- HTTPS + JWT --> A[API REST<br/>Node.js + Express · Render]
+    A --> D[(MongoDB Atlas)]
+    A --> E[E-mail<br/>Brevo / SMTP]
+```
 
-O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**, escolha este repositório e preencha:
+| Camada | Tecnologia |
+|---|---|
+| Servidor | Node.js 20 e Express 5 |
+| Banco de dados | MongoDB com Mongoose (MongoDB Atlas em produção) |
+| Segurança | JWT para sessões e bcrypt para senhas |
+| E-mail | API do Brevo ou SMTP (Nodemailer) |
+| Testes | node:test e supertest |
+| Hospedagem | Render |
 
-- `MONGODB_URI`: endereço do MongoDB Atlas, terminando em `/clinica-senai`
-- `ADMIN_SENHA`: senha do administrador (marco@senai.org.br) criada no primeiro deploy
-- `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://clinic-harmony.vercel.app`
-
-`JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e só aplica as atualizações de dados novas (como o corpo clínico de `src/seed/catalogo.js`), uma única vez.
-O plano grátis do Render bloqueia envio de e-mail por SMTP. Para o código de redefinição chegar por e-mail, use o Brevo: crie uma chave de API, verifique o e-mail remetente no Brevo e preencha `BREVO_API_KEY` e `EMAIL_REMETENTE` no Render. Sem isso, o código aparece na tela.
-
-## Rotas
-
-Todas as rotas (exceto as marcadas como públicas) exigem o cabeçalho `Authorization: Bearer <token>`, recebido no login.
-
-| Método | Rota | Quem pode | Descrição |
-|---|---|---|---|
-| POST | `/api/auth/login` | público | Login com `email` e `senha` |
-| POST | `/api/auth/cadastro` | público | Cadastro de paciente (já devolve o token) |
-| POST | `/api/auth/recuperar-senha` | público | Confere se o e-mail está cadastrado e envia um código de 6 dígitos |
-| POST | `/api/auth/redefinir-senha` | público | Troca a senha com e-mail + código (5 tentativas, vale 15 min) |
-| GET | `/api/auth/me` | logado | Usuário logado |
-| PUT | `/api/auth/me` | logado | Atualizar o próprio nome e telefone |
-| PATCH | `/api/auth/senha` | logado | Alterar a própria senha |
-| GET | `/api/pacientes` | logado | Paciente vê só o próprio cadastro |
-| POST | `/api/pacientes` | recepção, admin | Cadastrar paciente |
-| PUT | `/api/pacientes/:id` | recepção, admin, o próprio paciente | Editar |
-| PATCH | `/api/pacientes/:id/status` | recepção, admin | Ativar/desativar |
-| GET | `/api/profissionais` | logado | Listar (filtros `especialidade`, `ativo`) |
-| POST | `/api/profissionais` | recepção, admin | Cadastrar médico |
-| PUT | `/api/profissionais/:id` | admin, o próprio médico (contato) | Editar |
-| PATCH | `/api/profissionais/:id/status` | admin | Ativar/desativar |
-| PUT | `/api/profissionais/:id/disponibilidade/:dia` | admin | Expediente do dia (0=domingo … 6=sábado) |
-| GET/POST/DELETE | `/api/bloqueios` | logado / recepção, admin | Bloqueios de agenda |
-| GET | `/api/consultas` | logado | Filtros `data`, `dataInicio`, `dataFim`, `profissional`, `paciente`, `status`, `especialidade` |
-| GET | `/api/consultas/horarios?profissional=&data=` | logado | Horários livres |
-| GET | `/api/consultas/elegibilidade?paciente=&especialidade=` | logado | Verifica convênio/cadastro |
-| POST | `/api/consultas` | recepção, admin, paciente | Agendar |
-| PATCH | `/api/consultas/:id/status` | conforme o perfil | Confirmar, cancelar, realizada, não compareceu |
-| PATCH | `/api/consultas/:id/remarcar` | recepção, admin, paciente | Remarcar |
-| POST | `/api/consultas/:id/lembrete` | recepção, admin | Enviar lembrete (só um por consulta) |
-| POST | `/api/consultas/:id/pagamento` | paciente, recepção, admin | Pagamento simulado (`metodo`: Pix, Cartão de crédito, Cartão de débito) |
-| POST | `/api/consultas/lembretes` | recepção, admin | Lembrete para todas as pendentes |
-| GET/POST/PATCH/DELETE | `/api/fila-espera` | recepção, admin | Fila de espera (`/:id/convidar`) |
-| GET | `/api/notificacoes` | logado | Avisos do perfil (`?naoLidas=true`) |
-| POST | `/api/notificacoes` | recepção, admin, profissional | Enviar aviso |
-| PATCH | `/api/notificacoes/:id/lida`, `/api/notificacoes/lidas` | logado | Marcar como lida |
-| GET | `/api/especialidades`, `/api/convenios` | público | Listar |
-| POST/PUT/PATCH | `/api/especialidades`, `/api/convenios` | admin | Gerenciar (`/:id/status`) |
-| GET/PUT | `/api/configuracoes` | logado / recepção, admin | Dados e preferências da clínica |
-| GET/POST/PUT/PATCH | `/api/usuarios` | admin | Equipe interna (recepção e administradores) |
-| GET | `/api/relatorios/resumo` | recepção, admin | Indicadores do painel |
-
-### Regras de negócio principais
-- Horários de 30 em 30 minutos dentro do expediente do médico, sem consultas ativas e sem bloqueios.
-- O agendamento só acontece se o paciente estiver ativo, a especialidade ativa e coberta pelo convênio.
-- Cancelar libera o horário; remarcar volta a consulta para "Sem resposta" de confirmação.
-- Toda alteração fica no histórico da consulta.
-- Desativar paciente, médico ou especialidade preserva o histórico e bloqueia o acesso/novos agendamentos.
-
-## Estrutura
+### Organização do código
 
 ```
 src/
-├── app.js              # Express: middlewares e rotas
-├── server.js           # Conecta no MongoDB e sobe o servidor
-├── config/             # Conexão e padrão de JSON do Mongoose
-├── controllers/        # Regras de cada recurso
-├── middlewares/        # Autenticação (JWT), permissões e erros
-├── models/             # Schemas do MongoDB
-├── routes/             # Rotas da API (/api/...)
-├── services/           # Agenda (horários/elegibilidade) e notificações
-├── seed/               # Setup do banco (npm run setup) e dados usados nos testes
-└── utils/              # Datas, textos e erros
-tests/                  # Testes de integração
+├── app.js          Express, middlewares e rotas
+├── server.js       Conexão com o banco e início do servidor
+├── config/         Conexão e padrão de JSON do Mongoose
+├── controllers/    Regras de cada recurso
+├── middlewares/    Autenticação, permissões e tratamento de erros
+├── models/         Coleções do MongoDB
+├── routes/         Rotas da API (/api/...)
+├── services/       Agenda, notificações e e-mail
+├── seed/           Preparação do banco e corpo clínico
+└── utils/          Datas, CPF, textos e erros
+tests/              Testes de integração
 ```
 
-## Fluxo de trabalho (Git Flow)
+### Coleções
 
-- `main`: versão estável (cada entrega recebe uma tag, ex.: `v1.0.0`)
-- `develop`: integração do que está pronto
-- `feature/nome-da-funcionalidade`: cada funcionalidade nasce do `develop` e volta para ele com merge
-- `release/x.y.z`: preparação de uma versão, que vai para `main` e `develop`
-- `hotfix/descricao`: correção urgente a partir da `main`
+| Coleção | Guarda |
+|---|---|
+| Usuários | Acessos de todos os perfis |
+| Pacientes | Ficha do paciente e convênio |
+| Profissionais | Médicos, especialidade e expediente semanal |
+| Consultas | Agendamentos, status, histórico e pagamento |
+| Bloqueios | Horários e períodos indisponíveis |
+| Especialidades e Convênios | Catálogos da clínica e coberturas |
+| Fila de espera | Pacientes aguardando vaga |
+| Notificações | Avisos, lembretes e documentos |
+| Configurações | Dados e preferências da clínica |
 
-Mensagens de commit seguem o padrão `tipo: descrição` (`feat`, `fix`, `docs`, `test`, `chore`).
+## 🔌 Recursos da API
+
+Todas as rotas ficam em `/api`. As públicas são login, cadastro, recuperação de senha e as listas de especialidades e convênios; as demais exigem o token da sessão.
+
+| Recurso | Rota | Principais ações |
+|---|---|---|
+| Acesso | `/auth` | login, cadastro, recuperar e redefinir senha, minha conta |
+| Pacientes | `/pacientes` | listar, cadastrar, editar, ativar e desativar |
+| Profissionais | `/profissionais` | listar, cadastrar, editar, expediente, ativar, excluir |
+| Bloqueios | `/bloqueios` | listar, criar e remover |
+| Consultas | `/consultas` | agendar, horários livres, elegibilidade, status, remarcar, lembrete, pagamento |
+| Fila de espera | `/fila-espera` | adicionar, convidar e remover |
+| Notificações | `/notificacoes` | listar, enviar aviso ou documento, marcar como lida |
+| Especialidades | `/especialidades` | listar, cadastrar, editar e desativar |
+| Convênios | `/convenios` | listar, cadastrar, editar e desativar |
+| Configurações | `/configuracoes` | ler e atualizar |
+| Usuários | `/usuarios` | equipe interna |
+| Relatórios | `/relatorios/resumo` | indicadores do painel |
+
+## 🚀 Versões
+
+| Versão | Destaques |
+|---|---|
+| [1.6.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.6.1) | Documentação do projeto e padronização do git flow |
+| [1.6.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.6.0) | Corpo clínico com 12 especialidades e envio de atestados e receitas |
+| [1.5.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.5.0) | E-mail pela API do Brevo |
+| [1.4.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.4.1) | Setup preserva banco já configurado |
+| [1.4.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.4.0) | Exclusão de médico sem consultas |
+| [1.3.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.3.1) | Publicação no Render |
+| [1.3.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.3.0) | CPF na redefinição, pagamento só para particular e horários a partir da hora atual |
+| [1.2.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.2.0) | Pagamento simulado, lembrete único e redefinição de senha por código |
+| [1.1.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.1.0) | Banco da Clínica Senai com acessos iniciais |
+| [1.0.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.0.0) | API completa: acesso, pacientes, médicos, agenda, consultas, fila, notificações e relatórios |
+
+## 🌿 Fluxo de trabalho (Git Flow)
+
+```mermaid
+gitGraph
+    commit id: "v1.5.0" tag: "v1.5.0"
+    branch develop
+    checkout develop
+    branch feature/corpo-clinico
+    commit id: "feat: corpo clínico"
+    checkout develop
+    merge feature/corpo-clinico
+    branch release/1.6.0
+    commit id: "chore: versão 1.6.0"
+    checkout main
+    merge release/1.6.0 tag: "v1.6.0"
+    checkout develop
+    merge release/1.6.0
+    checkout main
+    branch hotfix/1.6.x
+    commit id: "fix urgente"
+    checkout main
+    merge hotfix/1.6.x tag: "v1.6.x"
+    checkout develop
+    merge hotfix/1.6.x
+```
+
+| Branch | Para que serve | Nasce de | Volta para |
+|---|---|---|---|
+| `main` | Versão em produção, cada entrega com uma tag `vX.Y.Z` | | |
+| `develop` | Integração do que está pronto | `main` | |
+| `feature/nome` | Uma funcionalidade nova | `develop` | `develop` |
+| `bugfix/nome` | Correção que pode esperar a próxima versão | `develop` | `develop` |
+| `release/X.Y.Z` | Preparação da versão (número e ajustes finais) | `develop` | `main` e `develop` |
+| `hotfix/X.Y.Z` | Correção urgente em produção | `main` | `main` e `develop` |
+| `docs/nome` | Documentação | `develop` | `develop` |
+
+- Versões seguem o [versionamento semântico](https://semver.org/lang/pt-BR/): `MAIOR.MENOR.CORREÇÃO`.
+- Commits seguem o padrão `tipo: descrição` com os tipos `feat`, `fix`, `docs`, `test` e `chore`.
+- Cada funcionalidade tem uma issue com labels de tipo, área, perfil e módulo, e fica no milestone da versão em que foi entregue.
+
+---
+
+<div align="center">
+
+Guia técnico para rodar e publicar a API: [docs/desenvolvimento.md](docs/desenvolvimento.md)
+
+</div>
