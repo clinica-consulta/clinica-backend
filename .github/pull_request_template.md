@@ -1,12 +1,12 @@
-## 📋 O que muda
+## O que muda
 
 <!-- Descreva a mudança em poucas linhas. -->
 
-## 🔗 Issue
+## Issue
 
 Closes #
 
-## 🌿 Tipo
+## Tipo
 
 - [ ] `feature/` nova funcionalidade (para `develop`)
 - [ ] `bugfix/` correção (para `develop`)
@@ -14,7 +14,7 @@ Closes #
 - [ ] `hotfix/` correção urgente (para `main` e `develop`)
 - [ ] `docs/` documentação (para `develop`)
 
-## ✅ Conferência
+## Conferência
 
 - [ ] Testei a mudança
 - [ ] Commits no padrão `tipo: descrição`
