@@ -24,3 +24,11 @@ services:
         value: 8h
       - key: SENHA_PADRAO
         value: "123456"
+      # Mercado Pago: Access Token (de teste ou de produção) e chave secreta do webhook.
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: MP_WEBHOOK_SECRET
+        sync: false
+      # Endereço do site, para onde o paciente volta depois de pagar.
+      - key: FRONTEND_URL
+        sync: false

@@ -25,13 +25,20 @@ const consultaSchema = new mongoose.Schema(
         lembreteEnviadoEm: { type: String, default: null },
         respostaConfirmacao: { type: String, enum: ["Confirmou", "Cancelou", "Sem resposta"], default: "Sem resposta" },
         historico: { type: [registroSchema], default: [] },
-        // Pagamento simulado: criado quando a recepção registra a consulta.
+        // Cobrança criada quando a consulta de um paciente particular é realizada.
+        // Com MP_ACCESS_TOKEN definido, o pagamento é feito pelo Mercado Pago.
         pagamento: {
             status: { type: String, enum: ["Pendente", "Pago", null], default: null },
             valor: { type: Number, default: 0 },
             metodo: { type: String, default: "" },
             codigo: { type: String, default: "" },
-            pagoEm: { type: Date, default: null }
+            pagoEm: { type: Date, default: null },
+            gateway: { type: String, enum: ["", "Mercado Pago", "Recepção"], default: "" },
+            // Link do checkout do Mercado Pago e identificadores da transação.
+            linkPagamento: { type: String, default: "" },
+            preferenciaId: { type: String, default: "" },
+            transacaoId: { type: String, default: "" },
+            situacaoGateway: { type: String, default: "" }
         }
     },
     { timestamps: true }
