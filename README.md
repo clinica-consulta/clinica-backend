@@ -66,8 +66,10 @@ Este repositório é a **API REST** da plataforma. Ela guarda os dados, aplica a
 - Filtros por data, período, médico, paciente, status e especialidade.
 
 ### Pagamentos
-- Pagamento simulado da consulta do convênio **Particular** por Pix, cartão de crédito ou cartão de débito.
-- Liberado depois que a consulta é registrada como realizada, com o valor definido nas configurações da clínica.
+- Cobrança da consulta do convênio **Particular**, gerada quando a consulta é registrada como realizada, com o valor definido nas configurações da clínica.
+- O paciente recebe um aviso no portal (e por e-mail, se configurado) e paga com Pix, cartão de crédito ou cartão de débito pelo **Mercado Pago** (Checkout Pro).
+- A confirmação chega pelo webhook do Mercado Pago e também é conferida quando o paciente volta ao site. O valor pago é comparado com o cobrado.
+- A recepção pode registrar pagamentos feitos no balcão. Sem `MP_ACCESS_TOKEN`, o pagamento do paciente funciona em modo simulado.
 
 ### Notificações e lembretes
 - Central de avisos por perfil, por paciente ou por médico, com controle de lidos e não lidos.
@@ -131,6 +133,7 @@ flowchart LR
     F -- HTTPS + JWT --> A[API REST<br/>Node.js + Express · Render]
     A --> D[(MongoDB Atlas)]
     A --> E[E-mail<br/>Brevo / SMTP]
+    A <--> P[Pagamentos<br/>Mercado Pago]
 ```
 
 | Camada | Tecnologia |
@@ -139,6 +142,7 @@ flowchart LR
 | Banco de dados | MongoDB com Mongoose (MongoDB Atlas em produção) |
 | Segurança | JWT para sessões e bcrypt para senhas |
 | E-mail | API do Brevo ou SMTP (Nodemailer) |
+| Pagamentos | Mercado Pago (Checkout Pro e webhook) |
 | Testes | node:test e supertest |
 | Hospedagem | Render |
 
@@ -183,7 +187,8 @@ Todas as rotas ficam em `/api`. As públicas são login, cadastro, recuperação
 | Pacientes | `/pacientes` | listar, cadastrar, editar, ativar e desativar |
 | Profissionais | `/profissionais` | listar, cadastrar, editar, expediente, ativar, excluir |
 | Bloqueios | `/bloqueios` | listar, criar e remover |
-| Consultas | `/consultas` | agendar, horários livres, elegibilidade, status, remarcar, lembrete, pagamento |
+| Consultas | `/consultas` | agendar, horários livres, elegibilidade, status, remarcar, lembrete, pagamento (checkout e verificação) |
+| Pagamentos | `/pagamentos` | webhook do Mercado Pago e configuração do pagamento on-line (públicas) |
 | Fila de espera | `/fila-espera` | adicionar, convidar e remover |
 | Notificações | `/notificacoes` | listar, enviar aviso ou documento, marcar como lida |
 | Especialidades | `/especialidades` | listar, cadastrar, editar e desativar |

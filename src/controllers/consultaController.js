@@ -7,11 +7,13 @@ const AppError = require("../utils/AppError");
 const { dataISO, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("../services/notificacaoService");
 const { verificarElegibilidade, horariosDisponiveis } = require("../services/agendaService");
+const mercadoPago = require("../services/mercadoPagoService");
+const { ErroGateway } = mercadoPago;
+const { avisarCobranca, confirmarPagamento, garantirLinkDePagamento, sincronizarComMercadoPago } = require("../services/pagamentoService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
 const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
 
-const formatarValor = (valor) => Number(valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const registrar = (consulta, texto) => {
     consulta.historico.push({ em: dataISO(), texto });
@@ -155,14 +157,8 @@ const alterarStatus = async (req, res) => {
         });
     }
     if (cobrar) {
-        await notificar({
-            titulo: "Pagamento da consulta",
-            texto: `Sua consulta de ${quando} foi realizada. Valor: ${formatarValor(consulta.pagamento.valor)}. O pagamento já está liberado.`,
-            publico: ["paciente"],
-            paciente: consulta.paciente,
-            consulta: consulta._id,
-            acao: "pagamento"
-        });
+        // Gera a cobrança no Mercado Pago e avisa o paciente no portal e por e-mail.
+        await avisarCobranca(consulta);
     }
     if (status === "Cancelada") {
         await notificar({
@@ -257,45 +253,72 @@ const enviarLembretesPendentes = async (_req, res) => {
     res.json({ enviados: pendentes.length, consultas: pendentes });
 };
 
-const METODOS = ["Pix", "Cartão de crédito", "Cartão de débito"];
+const METODOS = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro"];
 
-// Pagamento simulado: não cobra nada de verdade, só registra como pago.
-const pagar = async (req, res) => {
-    const { metodo } = req.body ?? {};
-    if (!METODOS.includes(metodo)) throw new AppError(`Escolha a forma de pagamento: ${METODOS.join(", ")}`);
-
-    const consulta = await buscar(req, req.params.id);
+const exigirCobrancaPendente = (consulta) => {
     if (consulta.pagamento?.status === "Pago") throw new AppError("Esta consulta já está paga", 409);
     if (consulta.pagamento?.status !== "Pendente") {
         throw new AppError("Não há pagamento liberado para esta consulta. Ele é liberado para pacientes particulares depois que a consulta é realizada.", 409);
     }
+};
 
-    consulta.pagamento.status = "Pago";
-    consulta.pagamento.metodo = metodo;
-    consulta.pagamento.codigo = `PAG-${consulta.codigo}-${Date.now().toString(36).toUpperCase()}`;
-    consulta.pagamento.pagoEm = new Date();
-    registrar(consulta, `Pagamento de ${formatarValor(consulta.pagamento.valor)} via ${metodo}`);
-    await consulta.save();
+// Registro manual do pagamento. A recepção usa para pagamentos feitos no balcão.
+// Sem Mercado Pago configurado, o paciente também usa (pagamento simulado, para demonstração).
+const pagar = async (req, res) => {
+    const { metodo } = req.body ?? {};
+    if (!METODOS.includes(metodo)) throw new AppError(`Escolha a forma de pagamento: ${METODOS.join(", ")}`);
+    if (req.usuario.tipo === "paciente" && mercadoPago.configurado()) {
+        throw new AppError("Pague pelo Mercado Pago: use o botão de pagamento da consulta", 409);
+    }
 
-    const paciente = await Paciente.findById(consulta.paciente);
-    await notificar({
-        titulo: "Pagamento recebido",
-        texto: `${paciente?.nome ?? "Paciente"} pagou ${formatarValor(consulta.pagamento.valor)} via ${metodo} (consulta #${consulta.codigo}).`,
-        publico: ["recepcionista", "administrador"]
+    const consulta = await buscar(req, req.params.id);
+    exigirCobrancaPendente(consulta);
+
+    await confirmarPagamento(consulta, {
+        metodo,
+        codigo: `PAG-${consulta.codigo}-${Date.now().toString(36).toUpperCase()}`,
+        gateway: "Recepção"
     });
-    await notificar({
-        titulo: "Pagamento confirmado",
-        texto: `Recebemos ${formatarValor(consulta.pagamento.valor)} via ${metodo}. Comprovante: ${consulta.pagamento.codigo}.`,
-        publico: ["paciente"],
-        paciente: consulta.paciente,
-        consulta: consulta._id
-    });
+    res.json(consulta);
+};
 
+// Gera o link do Mercado Pago (Pix, crédito ou débito) para o paciente pagar.
+const checkout = async (req, res) => {
+    if (!mercadoPago.configurado()) {
+        throw new AppError("O pagamento on-line ainda não está configurado nesta clínica", 503);
+    }
+    const consulta = await buscar(req, req.params.id);
+    await sincronizarComMercadoPago(consulta).catch(() => null);
+    exigirCobrancaPendente(consulta);
+
+    let url;
+    try {
+        // Um link novo a cada tentativa evita reaproveitar um checkout expirado.
+        url = await garantirLinkDePagamento(consulta, { novo: true });
+    } catch (erro) {
+        if (erro instanceof ErroGateway) throw new AppError(erro.message, 502);
+        throw erro;
+    }
+    res.json({ url, teste: mercadoPago.modoTeste(), consulta });
+};
+
+// Confere no Mercado Pago se o pagamento da consulta foi aprovado (usado na volta do checkout).
+const verificarPagamento = async (req, res) => {
+    const consulta = await buscar(req, req.params.id);
+    if (!consulta.pagamento?.status) throw new AppError("Esta consulta não tem cobrança", 409);
+    try {
+        await sincronizarComMercadoPago(consulta);
+    } catch (erro) {
+        if (erro instanceof ErroGateway) throw new AppError(erro.message, 502);
+        throw erro;
+    }
     res.json(consulta);
 };
 
 module.exports = {
     pagar,
+    checkout,
+    verificarPagamento,
     listar,
     obter,
     horarios,

@@ -234,7 +234,7 @@ describe("agendamento", () => {
             .post("/api/consultas")
             .set(como("recepcao"))
             .send({ paciente: particular.id, profissional: ana.id, data, hora: "13:00" });
-        assert.equal(criada.status, 201);
+        assert.equal(criada.status, 201, JSON.stringify(criada.body));
         assert.equal(criada.body.pagamento?.status ?? null, null, "sem cobrança ao agendar");
 
         const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
@@ -251,6 +251,96 @@ describe("agendamento", () => {
             .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:30" });
         const semCobranca = await api().patch(`/api/consultas/${deConvenio.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
         assert.equal(semCobranca.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
+    });
+
+    it("cobra pelo Mercado Pago e confirma pelo webhook", async () => {
+        const Notificacao = require("../src/models/Notificacao");
+        const fetchOriginal = global.fetch;
+        const chamadas = [];
+        let pagamentoNoGateway = null;
+        // Simula a API do Mercado Pago: nenhuma chamada sai para a internet nos testes.
+        global.fetch = async (url, opcoes = {}) => {
+            chamadas.push({ url: String(url), metodo: opcoes.method, corpo: opcoes.body ? JSON.parse(opcoes.body) : null });
+            const responder = (dados) => new Response(JSON.stringify(dados), { status: 200, headers: { "Content-Type": "application/json" } });
+            if (String(url).endsWith("/checkout/preferences")) {
+                return responder({ id: `pref-${chamadas.length}`, init_point: "https://mp.test/init", sandbox_init_point: "https://mp.test/sandbox" });
+            }
+            if (String(url).includes("/v1/payments/search")) return responder({ results: pagamentoNoGateway ? [pagamentoNoGateway] : [] });
+            if (String(url).includes("/v1/payments/")) return responder(pagamentoNoGateway);
+            return new Response("{}", { status: 404 });
+        };
+        Object.assign(process.env, { MP_ACCESS_TOKEN: "TEST-token", FRONTEND_URL: "https://site.test", API_PUBLIC_URL: "https://api.test" });
+
+        try {
+            const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
+            const particular = pacientes.body.find((item) => item.convenio === "Particular" && item.status === "Ativo");
+            const livres = await api().get(`/api/consultas/horarios?profissional=${ana.id}&data=${data}`).set(como("recepcao"));
+            const criada = await api()
+                .post("/api/consultas")
+                .set(como("recepcao"))
+                .send({ paciente: particular.id, profissional: ana.id, data, hora: livres.body.horarios[0] });
+            assert.equal(criada.status, 201, JSON.stringify(criada.body));
+
+            const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("profissional")).send({ status: "Realizada" });
+            assert.equal(realizada.status, 200);
+            assert.equal(realizada.body.pagamento.status, "Pendente");
+            assert.equal(realizada.body.pagamento.gateway, "Mercado Pago");
+            assert.equal(realizada.body.pagamento.linkPagamento, "https://mp.test/sandbox", "credencial de teste usa o checkout de teste");
+
+            const preferencia = chamadas.find((item) => item.url.endsWith("/checkout/preferences")).corpo;
+            assert.equal(preferencia.external_reference, criada.body.id);
+            assert.equal(preferencia.items[0].unit_price, realizada.body.pagamento.valor);
+            assert.equal(preferencia.notification_url, "https://api.test/api/pagamentos/webhook");
+            assert.match(preferencia.back_urls.success, /^https:\/\/site\.test\/paciente\?pagamento=aprovado/);
+
+            const aviso = await Notificacao.findOne({ consulta: criada.body.id, acao: "pagamento" });
+            assert.ok(aviso, "paciente recebe o aviso de pagamento disponível");
+
+            const checkout = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
+            assert.equal(checkout.status, 200);
+            assert.equal(checkout.body.url, "https://mp.test/sandbox");
+
+            // Ainda sem pagamento aprovado no gateway.
+            const antes = await api().post(`/api/consultas/${criada.body.id}/pagamento/verificar`).set(como("recepcao"));
+            assert.equal(antes.body.pagamento.status, "Pendente");
+
+            pagamentoNoGateway = {
+                id: 987654,
+                status: "approved",
+                external_reference: criada.body.id,
+                transaction_amount: realizada.body.pagamento.valor,
+                payment_method_id: "pix",
+                payment_type_id: "bank_transfer"
+            };
+            const webhook = await api().post("/api/pagamentos/webhook").send({ type: "payment", data: { id: "987654" } });
+            assert.equal(webhook.status, 200);
+
+            const paga = await api().get(`/api/consultas/${criada.body.id}`).set(como("recepcao"));
+            assert.equal(paga.body.pagamento.status, "Pago");
+            assert.equal(paga.body.pagamento.metodo, "Pix");
+            assert.equal(paga.body.pagamento.codigo, "MP-987654");
+
+            // Webhook repetido não gera pagamento em dobro.
+            await api().post("/api/pagamentos/webhook").send({ type: "payment", data: { id: "987654" } });
+            assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento confirmado", consulta: criada.body.id }), 1);
+        } finally {
+            global.fetch = fetchOriginal;
+            for (const chave of ["MP_ACCESS_TOKEN", "FRONTEND_URL", "API_PUBLIC_URL"]) delete process.env[chave];
+        }
+    });
+
+    it("recusa webhook do Mercado Pago com assinatura inválida", async () => {
+        Object.assign(process.env, { MP_ACCESS_TOKEN: "TEST-token", MP_WEBHOOK_SECRET: "segredo" });
+        try {
+            const resposta = await api()
+                .post("/api/pagamentos/webhook")
+                .set("x-signature", "ts=1,v1=abc")
+                .set("x-request-id", "r1")
+                .send({ type: "payment", data: { id: "1" } });
+            assert.equal(resposta.status, 401);
+        } finally {
+            for (const chave of ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET"]) delete process.env[chave];
+        }
     });
 
     it("não oferece horários que já passaram", async () => {

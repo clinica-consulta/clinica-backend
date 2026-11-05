@@ -23,6 +23,10 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 | `SENHA_PADRAO` | `123456` (senha inicial de quem é cadastrado pela equipe) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | vazios. Preencha para o código de redefinição de senha ir por e-mail; sem eles, o código aparece na tela e no terminal da API |
 | `BREVO_API_KEY`, `EMAIL_REMETENTE`, `EMAIL_NOME` | vazios. Alternativa ao SMTP que envia pela API do Brevo (HTTPS); use no Render grátis. Tem prioridade sobre o SMTP |
+| `MP_ACCESS_TOKEN` | vazio. Access Token do Mercado Pago. Sem ele, o pagamento do paciente é simulado |
+| `MP_WEBHOOK_SECRET` | vazio. Chave secreta do webhook do Mercado Pago; quando preenchida, a API confere a assinatura de cada aviso |
+| `FRONTEND_URL` | vazio (usa o primeiro endereço de `CORS_ORIGIN`). Endereço do site, para onde o paciente volta depois de pagar |
+| `API_PUBLIC_URL` | vazio (no Render usa `RENDER_EXTERNAL_URL`). Endereço público da API, usado no webhook do Mercado Pago |
 
 ### Banco e acessos iniciais
 
@@ -57,5 +61,15 @@ O arquivo `render.yaml` já descreve o serviço. No Render: **New > Blueprint**,
 - `CORS_ORIGIN`: endereço do front na Vercel, por exemplo `https://gestao-consultas.vercel.app`
 
 `JWT_SECRET` é gerado pelo Render. No primeiro início, `npm run setup` cria a clínica e os acessos iniciais. Nos próximos, ele vê que o banco já está configurado e só aplica as atualizações de dados novas (como o corpo clínico de `src/seed/catalogo.js`), uma única vez.
+### Pagamento com Mercado Pago (modo de teste)
+
+1. Entre em [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) no Mercado Pago e crie uma aplicação do tipo **Checkout Pro**.
+2. Em **Contas de teste**, crie um vendedor e um comprador. Entre no painel com o **vendedor de teste** e copie o **Access Token** das credenciais de produção dele (ou use o Access Token de teste, que começa com `TEST-`).
+3. Preencha `MP_ACCESS_TOKEN` no Render (ou no `.env`) e `FRONTEND_URL` com o endereço do site.
+4. Em **Webhooks**, cadastre `https://<sua-api>.onrender.com/api/pagamentos/webhook` com o evento **Pagamentos** e copie a chave secreta para `MP_WEBHOOK_SECRET`.
+5. Para pagar, entre no checkout com o **comprador de teste** e use os [cartões de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/additional-content/your-integrations/test/cards) (nome do titular `APRO` aprova o pagamento).
+
+Nenhum valor é cobrado de verdade com contas de teste. Para cobrar de verdade, troque pelo Access Token de produção da conta real da clínica.
+
 O plano grátis do Render bloqueia envio de e-mail por SMTP. Para o código de redefinição chegar por e-mail, use o Brevo: crie uma chave de API, verifique o e-mail remetente no Brevo e preencha `BREVO_API_KEY` e `EMAIL_REMETENTE` no Render. Sem isso, o código aparece na tela.
 
