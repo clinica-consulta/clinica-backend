@@ -199,8 +199,10 @@ describe("agendamento", () => {
         assert.ok(avisos.body.some((item) => item.titulo === "Consulta confirmada" && item.lida === false));
     });
 
-    it("não confirma a mesma consulta duas vezes", async () => {
-        const denovo = await api().patch(`/api/consultas/${consultaId}/status`).set(como("recepcao")).send({ status: "Confirmada" });
+    it("só o paciente confirma, e uma única vez", async () => {
+        const pelaRecepcao = await api().patch(`/api/consultas/${consultaId}/status`).set(como("recepcao")).send({ status: "Confirmada" });
+        assert.equal(pelaRecepcao.status, 403, "a recepção pede a confirmação, mas não confirma");
+        const denovo = await api().patch(`/api/consultas/${consultaId}/status`).set(como("paciente")).send({ status: "Confirmada" });
         assert.equal(denovo.status, 409);
     });
 
@@ -245,8 +247,8 @@ describe("agendamento", () => {
             .send({ paciente: particular.id, profissional: ana.id, data, hora: "13:00" });
         assert.equal(criada.status, 201, JSON.stringify(criada.body));
         assert.equal(criada.body.pagamento?.status ?? null, null, "sem cobrança ao agendar");
-        const antesDoHorario = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
-        assert.equal(antesDoHorario.status, 409, "resultado só a partir do horário");
+        const medicoAntes = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("profissional")).send({ status: "Realizada" });
+        assert.equal(medicoAntes.status, 409, "o médico registra o resultado só a partir do horário");
 
         await emAtendimento(criada.body.id);
         const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
@@ -425,7 +427,7 @@ describe("ciclo da consulta", () => {
         const id = await criarConsulta(particular.id);
         await emAtendimento(id);
         const confirmar = await api().patch(`/api/consultas/${id}/status`).set(como("recepcao")).send({ status: "Confirmada" });
-        assert.equal(confirmar.status, 409);
+        assert.equal(confirmar.status, 403);
         const remarcar = await api().patch(`/api/consultas/${id}/remarcar`).set(como("recepcao")).send({ data: proximaSegunda(), hora: "17:30" });
         assert.equal(remarcar.status, 409);
         const lembrete = await api().post(`/api/consultas/${id}/lembrete`).set(como("recepcao"));
@@ -456,10 +458,10 @@ describe("ciclo da consulta", () => {
         const Notificacao = require("../src/models/Notificacao");
         assert.ok(await Notificacao.exists({ consulta: semResposta, acao: "remarcar" }));
 
-        for (const status of ["Confirmada", "Cancelada", "Realizada"]) {
-            const resposta = await api().patch(`/api/consultas/${semResposta}/status`).set(como("recepcao")).send({ status });
-            assert.equal(resposta.status, 409, `não aplica ${status} em consulta encerrada`);
-        }
+        const cancelar = await api().patch(`/api/consultas/${semResposta}/status`).set(como("recepcao")).send({ status: "Cancelada" });
+        assert.equal(cancelar.status, 409, "consulta encerrada não é cancelada");
+        const medico = await api().patch(`/api/consultas/${semResposta}/status`).set(como("profissional")).send({ status: "Realizada" });
+        assert.equal(medico.status, 409, "o médico não altera consulta encerrada");
 
         const lembrete = await api().post(`/api/consultas/${confirmada}/pagamento/lembrete`).set(como("recepcao"));
         assert.equal(lembrete.status, 200);
@@ -470,6 +472,71 @@ describe("ciclo da consulta", () => {
         assert.equal(peloPaciente.status, 403);
         const semCobranca = await api().post(`/api/consultas/${semResposta}/pagamento/lembrete`).set(como("recepcao"));
         assert.equal(semCobranca.status, 409);
+
+        // A recepção corrige o resultado a qualquer momento.
+        const naoAconteceu = await api().patch(`/api/consultas/${confirmada}/status`).set(como("recepcao")).send({ status: "Não compareceu" });
+        assert.equal(naoAconteceu.status, 200);
+        assert.equal(naoAconteceu.body.pagamento?.status ?? null, null, "a cobrança pendente é cancelada");
+        const realizadaDeNovo = await api().patch(`/api/consultas/${confirmada}/status`).set(como("recepcao")).send({ status: "Realizada" });
+        assert.equal(realizadaDeNovo.status, 200);
+        assert.equal(realizadaDeNovo.body.pagamento.status, "Pendente", "volta a cobrar");
+
+        const paga = await api().post(`/api/consultas/${confirmada}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
+        assert.equal(paga.status, 200);
+        const depoisDePaga = await api().patch(`/api/consultas/${confirmada}/status`).set(como("recepcao")).send({ status: "Não compareceu" });
+        assert.equal(depoisDePaga.status, 409, "consulta paga não deixa de ser realizada");
+    });
+
+    it("a recepção registra o resultado antes do horário", async () => {
+        const particular = (await pacientes()).find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const id = await criarConsulta(particular.id);
+        const resposta = await api().patch(`/api/consultas/${id}/status`).set(como("recepcao")).send({ status: "Não compareceu" });
+        assert.equal(resposta.status, 200);
+    });
+
+    it("pedido de confirmação avisa o paciente", async () => {
+        const particular = (await pacientes()).find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const id = await criarConsulta(particular.id);
+        const pedido = await api().post(`/api/consultas/${id}/lembrete`).set(como("recepcao"));
+        assert.equal(pedido.status, 200);
+        assert.equal(pedido.body.status, "Agendada", "continua aguardando o paciente");
+        const Notificacao = require("../src/models/Notificacao");
+        assert.ok(await Notificacao.exists({ consulta: id, titulo: "Confirme sua consulta" }));
+    });
+});
+
+describe("convênio e carteirinha", () => {
+    const dadosBase = (sufixo) => ({
+        nome: `Paciente Convênio ${sufixo}`,
+        cpf: sufixo === "A" ? "111.444.777-35" : "529.982.247-25",
+        email: `convenio.${sufixo.toLowerCase()}@email.com`,
+        telefone: "(11) 90000-0000"
+    });
+
+    it("exige a carteirinha completa para quem tem convênio", async () => {
+        const sem = await api().post("/api/pacientes").set(como("recepcao")).send({ ...dadosBase("A"), convenio: "Saúde Total" });
+        assert.equal(sem.status, 400, JSON.stringify(sem.body));
+        assert.match(sem.body.detalhes.join(" "), /carteirinha/i);
+
+        const particular = await api().post("/api/pacientes").set(como("recepcao")).send({ ...dadosBase("A"), convenio: "Particular" });
+        assert.equal(particular.status, 201, "particular não precisa de carteirinha");
+    });
+
+    it("carteirinha vencida bloqueia o agendamento", async () => {
+        const criado = await api()
+            .post("/api/pacientes")
+            .set(como("recepcao"))
+            .send({ ...dadosBase("B"), convenio: "Saúde Total", carteirinha: { numero: "123", plano: "Enfermaria", validade: dataISO(-1) } });
+        assert.equal(criado.status, 201, JSON.stringify(criado.body));
+        assert.equal(criado.body.carteirinha.numero, "123");
+
+        const vencida = await api().get(`/api/consultas/elegibilidade?paciente=${criado.body.id}&especialidade=Cardiologia`).set(como("recepcao"));
+        assert.equal(vencida.body.ok, false);
+        assert.match(vencida.body.mensagem ?? vencida.body.motivo, /venceu/);
+
+        await api().put(`/api/pacientes/${criado.body.id}`).set(como("recepcao")).send({ carteirinha: { numero: "123", plano: "Enfermaria", validade: dataISO(365) } });
+        const valida = await api().get(`/api/consultas/elegibilidade?paciente=${criado.body.id}&especialidade=Cardiologia`).set(como("recepcao"));
+        assert.equal(valida.body.ok, true, JSON.stringify(valida.body));
     });
 });
 
@@ -537,8 +604,8 @@ describe("cadastros da administração", () => {
     });
 
     it("atualiza as configurações da clínica", async () => {
-        const resposta = await api().put("/api/configuracoes").set(como("recepcao")).send({ confirmacaoAutomatica: true });
-        assert.equal(resposta.body.confirmacaoAutomatica, true);
+        const resposta = await api().put("/api/configuracoes").set(como("recepcao")).send({ antecedenciaLembreteHoras: 48 });
+        assert.equal(resposta.body.antecedenciaLembreteHoras, 48);
     });
 });
 
@@ -564,7 +631,10 @@ describe("atualizações de dados do setup", () => {
         const Especialidade = require("../src/models/Especialidade");
 
         const primeira = await aplicarAtualizacoes({ senha: "123456" });
-        assert.equal(primeira.length, 1);
+        assert.equal(primeira.length, 2);
+        const { CONVENIOS } = require("../src/seed/catalogo");
+        const Convenio = require("../src/models/Convenio");
+        for (const nome of CONVENIOS) assert.ok(await Convenio.exists({ nome }), nome);
         for (const item of ESPECIALIDADES) {
             assert.ok(await Especialidade.exists({ nome: item.nome }), item.nome);
         }

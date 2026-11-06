@@ -8,6 +8,7 @@ const configuracaoSchema = new mongoose.Schema(
         telefone: { type: String, default: "" },
         email: { type: String, default: "" },
         antecedenciaLembreteHoras: { type: Number, default: 24, min: 1 },
+        // Não é mais usado: a consulta só fica confirmada quando o próprio paciente confirma.
         confirmacaoAutomatica: { type: Boolean, default: false },
         valorConsulta: { type: Number, default: 150, min: 0 },
         // Atualizações de dados já aplicadas pelo setup (ver seed/catalogo.js).

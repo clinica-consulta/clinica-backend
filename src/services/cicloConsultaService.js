@@ -64,6 +64,33 @@ const avisarAusencia = async (consulta) => {
     }).catch((erro) => console.error("Falha ao enviar e-mail de ausência:", erro.message));
 };
 
+// Pede ao paciente (no portal e por e-mail) que confirme a presença. Só o paciente confirma.
+const pedirConfirmacao = async (consulta) => {
+    const profissional = await Profissional.findById(consulta.profissional);
+    const comQuem = profissional ? ` com ${profissional.nome}` : "";
+    await notificar({
+        titulo: "Confirme sua consulta",
+        texto: `Você tem consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}. Confirme sua presença aqui no portal.`,
+        publico: ["paciente"],
+        paciente: consulta.paciente,
+        consulta: consulta._id
+    });
+
+    const paciente = await Paciente.findById(consulta.paciente);
+    if (!paciente?.email) return;
+    const portal = urlDoSite() ? `${urlDoSite()}/paciente` : "";
+    await enviarEmail({
+        para: paciente.email,
+        assunto: `Confirme sua consulta #${consulta.codigo}`,
+        texto:
+            `Olá, ${paciente.nome}!\n\n` +
+            `Você tem consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}.\n` +
+            "Confirme sua presença (ou cancele, se não puder ir) no portal do paciente:\n" +
+            (portal ? `${portal}\n\n` : "acesse o portal do paciente.\n\n") +
+            "Sua consulta só fica confirmada depois da sua resposta."
+    }).catch((erro) => console.error("Falha ao enviar e-mail de confirmação:", erro.message));
+};
+
 // Libera a cobrança do paciente particular quando a consulta é realizada.
 // Devolve true quando criou uma cobrança nova (quem chamou avisa o paciente depois de salvar).
 const prepararCobranca = async (consulta) => {
@@ -128,5 +155,6 @@ module.exports = {
     encerrarVencidas,
     iniciarEncerramentoAutomatico,
     avisarAusencia,
-    prepararCobranca
+    prepararCobranca,
+    pedirConfirmacao
 };

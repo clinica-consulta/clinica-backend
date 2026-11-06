@@ -183,25 +183,26 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 |---|---|
 | RN01 | Os horários são oferecidos em intervalos de 30 minutos, dentro do expediente e sem consultas ativas ou bloqueios. |
 | RN02 | No dia corrente, só são oferecidos horários posteriores à hora atual. |
-| RN03 | O agendamento exige paciente ativo e especialidade ativa e coberta pelo convênio. |
+| RN03 | O agendamento exige paciente ativo, especialidade ativa e coberta pelo convênio e, para quem tem convênio, carteirinha válida no dia da consulta. |
 | RN04 | O cancelamento libera o horário imediatamente. |
 | RN05 | Após a remarcação, a confirmação volta para "Sem resposta" até o paciente confirmar a nova data. |
-| RN06 | Cada consulta recebe, no máximo, um lembrete. |
+| RN06 | Toda consulta nasce aguardando confirmação. A recepção envia um único pedido de confirmação (portal e e-mail), e só o próprio paciente confirma a presença. |
 | RN07 | A cobrança é gerada somente para pacientes do convênio Particular e somente após a consulta realizada. |
 | RN08 | O valor cobrado é definido no servidor; pagamento com valor inferior ao cobrado não é aceito. |
 | RN09 | Pacientes, profissionais e especialidades desativados mantêm o histórico e deixam de aceitar agendamentos. |
 | RN10 | Um profissional só pode ser excluído se não tiver consultas registradas. |
-| RN11 | Antes do horário marcado, a consulta pode ser confirmada, lembrada, remarcada ou cancelada. Do horário até 1 hora depois, só pode ser registrada como realizada ou como não comparecimento. |
+| RN11 | Antes do horário marcado, a consulta pode receber o pedido de confirmação, ser remarcada ou cancelada. A recepção registra o resultado (realizada ou não aconteceu) a qualquer momento e pode corrigi-lo depois; o médico registra só do horário até 1 hora depois. |
 | RN12 | Sem resultado registrado, a consulta é encerrada automaticamente 1 hora após o horário: confirmada vira "Realizada" (com cobrança do particular); sem confirmação vira "Não compareceu". |
-| RN13 | Consulta encerrada não pode mais ser alterada; a única ação permitida é lembrar o pagamento pendente do particular, no máximo uma vez a cada 24 horas. |
+| RN13 | Consulta encerrada não pode ser cancelada nem remarcada. A recepção pode corrigir o resultado; ao deixar de ser realizada, a cobrança pendente é cancelada, e consulta já paga não deixa de ser realizada. O pagamento pendente do particular pode ser lembrado no máximo uma vez a cada 24 horas. |
 | RN14 | O paciente que não comparece recebe um aviso no portal e por e-mail convidando a agendar um novo horário. |
+| RN15 | Paciente com convênio precisa da carteirinha completa: número, plano e validade. Particular não tem carteirinha. |
 
 ### 6.5 Ciclo de vida da consulta
 
 ```mermaid
 stateDiagram-v2
     [*] --> Agendada
-    Agendada --> Confirmada: paciente confirma
+    Agendada --> Confirmada: paciente responde ao pedido de confirmação
     Agendada --> Remarcada: nova data
     Confirmada --> Remarcada: nova data
     Remarcada --> Confirmada: paciente confirma
@@ -214,6 +215,8 @@ stateDiagram-v2
     Agendada --> NaoCompareceu: equipe registra ou 1 h após o horário
     Remarcada --> Realizada: equipe registra
     Remarcada --> NaoCompareceu: equipe registra ou 1 h após o horário
+    Realizada --> NaoCompareceu: recepção corrige (se não foi paga)
+    NaoCompareceu --> Realizada: recepção corrige
     Realizada --> [*]
     Cancelada --> [*]
     NaoCompareceu --> [*]
@@ -447,6 +450,7 @@ O projeto resultou em uma API funcional e publicada, integrada à interface web 
 
 | Versão | Entregas |
 |---|---|
+| [1.10.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.10.0) | Confirmação só pelo paciente, resultado registrado pela recepção a qualquer momento e carteirinha do convênio |
 | [1.9.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.9.0) | Ciclo da consulta: encerramento automático 1 hora após o horário, aviso de ausência e lembrete de pagamento |
 | [1.8.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.8.1) | Setup completa cada especialidade com 2 médicos mesmo depois de renomeada |
 | [1.8.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.8.0) | Lembrete, confirmação e registro de consulta realizada feitos uma única vez |

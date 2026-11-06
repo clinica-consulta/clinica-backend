@@ -2,7 +2,6 @@ const Consulta = require("../models/Consulta");
 const Contador = require("../models/Contador");
 const Paciente = require("../models/Paciente");
 const Profissional = require("../models/Profissional");
-const Configuracao = require("../models/Configuracao");
 const AppError = require("../utils/AppError");
 const { dataISO, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("../services/notificacaoService");
@@ -10,7 +9,7 @@ const { verificarElegibilidade, horariosDisponiveis } = require("../services/age
 const stripe = require("../services/stripeService");
 const { ErroGateway } = stripe;
 const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
-const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca } = require("../services/cicloConsultaService");
+const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca, pedirConfirmacao } = require("../services/cicloConsultaService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
 // Status que registram o resultado do atendimento (só valem do horário até 1 hora depois).
@@ -70,7 +69,7 @@ const horarios = async (req, res) => {
 const elegibilidade = async (req, res) => {
     const paciente = req.usuario.tipo === "paciente" ? req.usuario.paciente : req.query.paciente;
     if (!paciente || !req.query.especialidade) throw new AppError("Informe paciente e especialidade");
-    res.json(await verificarElegibilidade(paciente, req.query.especialidade));
+    res.json(await verificarElegibilidade(paciente, req.query.especialidade, req.query.data || dataISO()));
 };
 
 const criar = async (req, res) => {
@@ -84,13 +83,12 @@ const criar = async (req, res) => {
     const profissional = await Profissional.findById(profissionalId);
     if (!profissional) throw new AppError("Profissional não encontrado", 404);
 
-    const elegivel = await verificarElegibilidade(pacienteId, profissional.especialidade);
+    const elegivel = await verificarElegibilidade(pacienteId, profissional.especialidade, data);
     if (!elegivel.ok) throw new AppError(elegivel.motivo, 422);
 
     const livres = await horariosDisponiveis(profissional._id, data);
     if (!livres.includes(hora)) throw new AppError("Horário indisponível para este profissional", 409);
 
-    const configuracao = await Configuracao.obter();
     const canal = req.usuario.tipo === "paciente" ? "Paciente" : "Recepção";
     const consulta = new Consulta({
         codigo: String(await Contador.proximo("consulta")),
@@ -99,8 +97,9 @@ const criar = async (req, res) => {
         paciente: pacienteId,
         profissional: profissional._id,
         especialidade: profissional.especialidade,
-        status: configuracao.confirmacaoAutomatica ? "Confirmada" : "Agendada",
-        respostaConfirmacao: configuracao.confirmacaoAutomatica ? "Confirmou" : "Sem resposta",
+        // A consulta só fica confirmada quando o próprio paciente confirma.
+        status: "Agendada",
+        respostaConfirmacao: "Sem resposta",
         observacoes: observacoes ?? "",
         canal
     });
@@ -120,10 +119,11 @@ const criar = async (req, res) => {
 };
 
 // Quem pode levar a consulta para cada status.
+// Só o paciente confirma a presença; a recepção pede a confirmação e registra o resultado.
 const statusPermitidos = (usuario) => {
-    if (ehEquipe(usuario)) return STATUS;
+    if (ehEquipe(usuario)) return [...RESULTADOS, "Cancelada"];
     if (usuario.tipo === "paciente") return ["Confirmada", "Cancelada"];
-    if (usuario.tipo === "profissional") return ["Confirmada", "Realizada", "Não compareceu"];
+    if (usuario.tipo === "profissional") return RESULTADOS;
     return [];
 };
 
@@ -135,24 +135,35 @@ const alterarStatus = async (req, res) => {
     }
 
     const consulta = await buscar(req, req.params.id);
-    // Cada ação acontece uma única vez: consulta encerrada não muda mais e o mesmo status não se repete.
-    if (!STATUS_ABERTOS.includes(consulta.status)) {
+    if (consulta.status === status) throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    if (consulta.status === "Cancelada") throw new AppError("A consulta foi cancelada e não pode mais ser alterada", 409);
+
+    const resultado = RESULTADOS.includes(status);
+    const momento = momentoDaConsulta(consulta);
+    // A recepção registra (ou corrige) o resultado a qualquer momento: troca entre "Realizada" e "Não compareceu".
+    const correcao = ehEquipe(req.usuario) && resultado && RESULTADOS.includes(consulta.status);
+    if (!STATUS_ABERTOS.includes(consulta.status) && !correcao) {
         throw new AppError(`A consulta já foi encerrada como "${consulta.status}"`, 409);
     }
-    if (consulta.status === status) throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    if (!ehEquipe(req.usuario) || !resultado) {
+        if (momento === "encerrada") throw new AppError("A consulta foi encerrada: já passou 1 hora do horário marcado", 409);
+        if (resultado && momento === "antes") {
+            throw new AppError("O resultado só pode ser registrado a partir do horário da consulta", 409);
+        }
+        if (!resultado && momento === "atendimento") {
+            throw new AppError("O horário da consulta já começou: registre se ela foi realizada ou se o paciente não compareceu", 409);
+        }
+    }
+    // Não some com um pagamento já feito.
+    if (consulta.status === "Realizada" && status !== "Realizada" && consulta.pagamento?.status === "Pago") {
+        throw new AppError("Esta consulta já foi paga e não pode deixar de ser realizada", 409);
+    }
 
-    const momento = momentoDaConsulta(consulta);
-    if (momento === "encerrada") {
-        throw new AppError("A consulta foi encerrada: já passou 1 hora do horário marcado", 409);
+    if (consulta.status === "Realizada" && consulta.pagamento?.status === "Pendente") {
+        // Deixou de ser realizada: a cobrança pendente é cancelada.
+        consulta.pagamento = { status: null, valor: 0 };
+        registrar(consulta, "Cobrança cancelada: a consulta deixou de constar como realizada");
     }
-    const resultado = RESULTADOS.includes(status);
-    if (resultado && momento === "antes") {
-        throw new AppError("O resultado só pode ser registrado a partir do horário da consulta", 409);
-    }
-    if (!resultado && momento === "atendimento") {
-        throw new AppError("O horário da consulta já começou: registre se ela foi realizada ou se o paciente não compareceu", 409);
-    }
-
     consulta.status = status;
     // Só paciente particular paga na clínica; convênio não recebe cobrança.
     const cobrar = status === "Realizada" && (await prepararCobranca(consulta));
@@ -203,6 +214,8 @@ const remarcar = async (req, res) => {
     if (momentoDaConsulta(consulta) !== "antes") {
         throw new AppError("Só é possível remarcar antes do horário da consulta", 409);
     }
+    const elegivel = await verificarElegibilidade(consulta.paciente, consulta.especialidade, data);
+    if (!elegivel.ok) throw new AppError(elegivel.motivo, 422);
 
     const livres = await horariosDisponiveis(consulta.profissional, data, consulta._id);
     if (!livres.includes(hora)) throw new AppError("Horário indisponível para este profissional", 409);
@@ -235,15 +248,9 @@ const enviarLembrete = async (req, res) => {
         throw new AppError("O lembrete de confirmação só pode ser enviado antes do horário da consulta", 409);
     }
     consulta.lembreteEnviadoEm = dataISO();
-    registrar(consulta, "Lembrete de confirmação enviado");
+    registrar(consulta, "Pedido de confirmação enviado ao paciente");
     await consulta.save();
-
-    await notificar({
-        titulo: "Lembrete de consulta",
-        texto: `Confirme sua presença em ${formatarDataBR(consulta.data)} às ${consulta.hora}.`,
-        publico: ["paciente"],
-        paciente: consulta.paciente
-    });
+    await pedirConfirmacao(consulta);
 
     res.json(consulta);
 };
@@ -261,20 +268,15 @@ const enviarLembretesPendentes = async (_req, res) => {
 
     for (const consulta of pendentes) {
         consulta.lembreteEnviadoEm = dataISO();
-        registrar(consulta, "Lembrete de confirmação enviado");
+        registrar(consulta, "Pedido de confirmação enviado ao paciente");
         await consulta.save();
-        await notificar({
-            titulo: "Lembrete de consulta",
-            texto: `Confirme sua presença em ${formatarDataBR(consulta.data)} às ${consulta.hora}.`,
-            publico: ["paciente"],
-            paciente: consulta.paciente
-        });
+        await pedirConfirmacao(consulta);
     }
 
     if (pendentes.length) {
         await notificar({
-            titulo: "Lembretes enviados",
-            texto: `${pendentes.length} paciente(s) receberam o lembrete de confirmação.`,
+            titulo: "Pedidos de confirmação enviados",
+            texto: `${pendentes.length} paciente(s) receberam o pedido de confirmação.`,
             publico: ["recepcionista"]
         });
     }
