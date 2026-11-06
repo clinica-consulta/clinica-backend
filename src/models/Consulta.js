@@ -25,13 +25,19 @@ const consultaSchema = new mongoose.Schema(
         lembreteEnviadoEm: { type: String, default: null },
         respostaConfirmacao: { type: String, enum: ["Confirmou", "Cancelou", "Sem resposta"], default: "Sem resposta" },
         historico: { type: [registroSchema], default: [] },
-        // Pagamento simulado: criado quando a recepção registra a consulta.
+        // Cobrança criada quando a consulta de um paciente particular é realizada.
+        // Com as chaves do Stripe definidas, o paciente paga pelo Stripe dentro do site.
         pagamento: {
             status: { type: String, enum: ["Pendente", "Pago", null], default: null },
             valor: { type: Number, default: 0 },
             metodo: { type: String, default: "" },
             codigo: { type: String, default: "" },
-            pagoEm: { type: Date, default: null }
+            pagoEm: { type: Date, default: null },
+            gateway: { type: String, enum: ["", "Stripe", "Recepção"], default: "" },
+            // Sessão de pagamento do Stripe e identificadores da transação.
+            sessaoId: { type: String, default: "" },
+            transacaoId: { type: String, default: "" },
+            situacaoGateway: { type: String, default: "" }
         }
     },
     { timestamps: true }
