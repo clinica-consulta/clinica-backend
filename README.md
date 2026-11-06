@@ -4,7 +4,6 @@
 
 **Projeto Integrador · SENAI**
 
-![Versão](https://img.shields.io/github/v/release/clinica-consulta/clinica-backend?label=vers%C3%A3o&color=0e8a16)
 ![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?logo=mongodb&logoColor=white)
