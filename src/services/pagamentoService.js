@@ -130,4 +130,32 @@ const abrirSessao = async (consulta) => {
     return { sessao };
 };
 
-module.exports = { formatarValor, avisarCobranca, confirmarPagamento, sincronizarComStripe, abrirSessao };
+// Lembra o paciente (no portal e por e-mail) de uma cobrança ainda pendente.
+const lembrarPagamento = async (consulta) => {
+    const quando = `${formatarDataBR(consulta.data)} às ${consulta.hora}`;
+    const valor = formatarValor(consulta.pagamento.valor);
+
+    await notificar({
+        titulo: "Lembrete de pagamento",
+        texto: `O pagamento de ${valor} da consulta de ${quando} ainda está pendente. Pague com Pix ou cartão aqui no portal.`,
+        publico: ["paciente"],
+        paciente: consulta.paciente,
+        consulta: consulta._id,
+        acao: "pagamento"
+    });
+
+    const paciente = await Paciente.findById(consulta.paciente);
+    if (!paciente?.email) return;
+    const portal = urlDoSite() ? `${urlDoSite()}/paciente` : "";
+    await enviarEmail({
+        para: paciente.email,
+        assunto: `Lembrete: pagamento da consulta #${consulta.codigo}`,
+        texto:
+            `Olá, ${paciente.nome}!\n\n` +
+            `O pagamento de ${valor} da sua consulta de ${consulta.especialidade} em ${quando} ainda está pendente.\n\n` +
+            (portal ? `Pague com Pix ou cartão no portal do paciente:\n${portal}\n\n` : "Acesse o portal do paciente para pagar.\n\n") +
+            "Se você já pagou, desconsidere esta mensagem."
+    }).catch((erro) => console.error("Falha ao enviar e-mail de lembrete de pagamento:", erro.message));
+};
+
+module.exports = { formatarValor, urlDoSite, avisarCobranca, lembrarPagamento, confirmarPagamento, sincronizarComStripe, abrirSessao };

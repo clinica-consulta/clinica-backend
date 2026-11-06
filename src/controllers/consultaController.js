@@ -9,9 +9,14 @@ const { notificar } = require("../services/notificacaoService");
 const { verificarElegibilidade, horariosDisponiveis } = require("../services/agendaService");
 const stripe = require("../services/stripeService");
 const { ErroGateway } = stripe;
-const { avisarCobranca, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
+const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
+const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca } = require("../services/cicloConsultaService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
+// Status que registram o resultado do atendimento (só valem do horário até 1 hora depois).
+const RESULTADOS = ["Realizada", "Não compareceu"];
+// Intervalo mínimo entre dois lembretes de pagamento da mesma consulta.
+const INTERVALO_LEMBRETE_PAGAMENTO = 24 * 60 * 60 * 1000;
 const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
 
 
@@ -45,6 +50,8 @@ const listar = async (req, res) => {
     if (status) filtro.status = status;
     if (especialidade) filtro.especialidade = especialidade;
 
+    // Garante que a lista já venha com as consultas vencidas encerradas.
+    await encerrarVencidas();
     res.json(await Consulta.find(filtro).sort({ data: 1, hora: 1 }));
 };
 
@@ -128,22 +135,27 @@ const alterarStatus = async (req, res) => {
     }
 
     const consulta = await buscar(req, req.params.id);
-    if (!ehEquipe(req.usuario) && !STATUS_ABERTOS.includes(consulta.status)) {
-        throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    // Cada ação acontece uma única vez: consulta encerrada não muda mais e o mesmo status não se repete.
+    if (!STATUS_ABERTOS.includes(consulta.status)) {
+        throw new AppError(`A consulta já foi encerrada como "${consulta.status}"`, 409);
     }
-    // Cada ação acontece uma única vez: não repete o mesmo status e não mexe em consulta já realizada.
-    if (consulta.status === status || consulta.status === "Realizada") {
-        throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    if (consulta.status === status) throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+
+    const momento = momentoDaConsulta(consulta);
+    if (momento === "encerrada") {
+        throw new AppError("A consulta foi encerrada: já passou 1 hora do horário marcado", 409);
+    }
+    const resultado = RESULTADOS.includes(status);
+    if (resultado && momento === "antes") {
+        throw new AppError("O resultado só pode ser registrado a partir do horário da consulta", 409);
+    }
+    if (!resultado && momento === "atendimento") {
+        throw new AppError("O horário da consulta já começou: registre se ela foi realizada ou se o paciente não compareceu", 409);
     }
 
     consulta.status = status;
-    const pacienteDaConsulta = status === "Realizada" ? await Paciente.findById(consulta.paciente) : null;
     // Só paciente particular paga na clínica; convênio não recebe cobrança.
-    const cobrar = status === "Realizada" && pacienteDaConsulta?.convenio === "Particular" && !consulta.pagamento?.status;
-    if (cobrar) {
-        const configuracao = await Configuracao.obter();
-        consulta.pagamento = { status: "Pendente", valor: configuracao.valorConsulta };
-    }
+    const cobrar = status === "Realizada" && (await prepararCobranca(consulta));
     if (status === "Confirmada") consulta.respostaConfirmacao = "Confirmou";
     if (status === "Cancelada") consulta.respostaConfirmacao = "Cancelou";
     registrar(consulta, observacao || `Status alterado para ${status}`);
@@ -164,6 +176,10 @@ const alterarStatus = async (req, res) => {
         // Libera a cobrança e avisa o paciente no portal e por e-mail.
         await avisarCobranca(consulta);
     }
+    if (status === "Não compareceu") {
+        // Convida o paciente a agendar outro dia, no portal e por e-mail.
+        await avisarAusencia(consulta);
+    }
     if (status === "Cancelada") {
         await notificar({
             titulo: "Horário liberado",
@@ -183,6 +199,9 @@ const remarcar = async (req, res) => {
     const consulta = await buscar(req, req.params.id);
     if (!STATUS_ABERTOS.includes(consulta.status)) {
         throw new AppError(`Não é possível remarcar uma consulta "${consulta.status}"`, 409);
+    }
+    if (momentoDaConsulta(consulta) !== "antes") {
+        throw new AppError("Só é possível remarcar antes do horário da consulta", 409);
     }
 
     const livres = await horariosDisponiveis(consulta.profissional, data, consulta._id);
@@ -211,6 +230,10 @@ const enviarLembrete = async (req, res) => {
     if (consulta.lembreteEnviadoEm) {
         throw new AppError("O lembrete desta consulta já foi enviado. Só é permitido um lembrete por consulta.", 409);
     }
+    if (consulta.status === "Confirmada") throw new AppError("A consulta já está confirmada", 409);
+    if (momentoDaConsulta(consulta) !== "antes") {
+        throw new AppError("O lembrete de confirmação só pode ser enviado antes do horário da consulta", 409);
+    }
     consulta.lembreteEnviadoEm = dataISO();
     registrar(consulta, "Lembrete de confirmação enviado");
     await consulta.save();
@@ -227,12 +250,14 @@ const enviarLembrete = async (req, res) => {
 
 // Envia lembrete para todas as consultas futuras em aberto, sem resposta e ainda sem lembrete.
 const enviarLembretesPendentes = async (_req, res) => {
-    const pendentes = await Consulta.find({
-        status: { $in: STATUS_ABERTOS },
+    const candidatas = await Consulta.find({
+        status: { $in: ["Agendada", "Remarcada"] },
         respostaConfirmacao: "Sem resposta",
         data: { $gte: dataISO() },
         lembreteEnviadoEm: null
     });
+    // Só as que ainda não chegaram ao horário marcado.
+    const pendentes = candidatas.filter((consulta) => momentoDaConsulta(consulta) === "antes");
 
     for (const consulta of pendentes) {
         consulta.lembreteEnviadoEm = dataISO();
@@ -308,6 +333,24 @@ const checkout = async (req, res) => {
     res.json({ clientSecret: resultado.sessao.client_secret, chavePublica: stripe.chavePublica(), teste: stripe.modoTeste() });
 };
 
+// A recepção lembra o paciente particular de uma cobrança pendente (no máximo uma vez a cada 24 horas).
+const lembrarPagamentoPendente = async (req, res) => {
+    const consulta = await buscar(req, req.params.id);
+    exigirCobrancaPendente(consulta);
+    const ultimo = consulta.pagamento.lembreteEm ? new Date(consulta.pagamento.lembreteEm).getTime() : 0;
+    const proximo = ultimo + INTERVALO_LEMBRETE_PAGAMENTO;
+    if (Date.now() < proximo) {
+        const quando = new Intl.DateTimeFormat("pt-BR", { timeZone: process.env.TZ_CLINICA || "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(proximo);
+        throw new AppError(`O lembrete de pagamento já foi enviado. Envie de novo a partir de ${quando}.`, 409);
+    }
+
+    consulta.pagamento.lembreteEm = new Date();
+    registrar(consulta, "Lembrete de pagamento enviado");
+    await consulta.save();
+    await lembrarPagamento(consulta);
+    res.json(consulta);
+};
+
 // Confere no Stripe se o pagamento da consulta foi aprovado (usado ao terminar o pagamento no site).
 const verificarPagamento = async (req, res) => {
     const consulta = await buscar(req, req.params.id);
@@ -323,6 +366,7 @@ const verificarPagamento = async (req, res) => {
 
 module.exports = {
     pagar,
+    lembrarPagamentoPendente,
     checkout,
     verificarPagamento,
     listar,

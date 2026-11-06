@@ -37,7 +37,9 @@ const consultaSchema = new mongoose.Schema(
             // Sessão de pagamento do Stripe e identificadores da transação.
             sessaoId: { type: String, default: "" },
             transacaoId: { type: String, default: "" },
-            situacaoGateway: { type: String, default: "" }
+            situacaoGateway: { type: String, default: "" },
+            // Último lembrete de pagamento enviado ao paciente (no máximo um a cada 24 horas).
+            lembreteEm: { type: Date, default: null }
         }
     },
     { timestamps: true }
