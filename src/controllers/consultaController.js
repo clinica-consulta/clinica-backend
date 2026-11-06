@@ -131,6 +131,10 @@ const alterarStatus = async (req, res) => {
     if (!ehEquipe(req.usuario) && !STATUS_ABERTOS.includes(consulta.status)) {
         throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
     }
+    // Cada ação acontece uma única vez: não repete o mesmo status e não mexe em consulta já realizada.
+    if (consulta.status === status || consulta.status === "Realizada") {
+        throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    }
 
     consulta.status = status;
     const pacienteDaConsulta = status === "Realizada" ? await Paciente.findById(consulta.paciente) : null;
