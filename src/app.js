@@ -14,6 +14,8 @@ const origens = (process.env.CORS_ORIGIN || "")
     .filter(Boolean);
 
 app.use(cors(origens.length ? { origin: origens } : {}));
+// O webhook do Stripe precisa do corpo cru para conferir a assinatura, então vem antes do express.json().
+app.post("/api/pagamentos/webhook", express.raw({ type: "application/json" }), require("./routes/pagamentoRoutes").webhook);
 app.use(express.json());
 
 app.get("/", (_req, res) => {
