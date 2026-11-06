@@ -441,6 +441,7 @@ O projeto resultou em uma API funcional e publicada, integrada à interface web 
 
 | Versão | Entregas |
 |---|---|
+| [1.8.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.8.0) | Lembrete, confirmação e registro de consulta realizada feitos uma única vez |
 | [1.7.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.7.0) | Pagamento on-line da consulta particular pelo Stripe (Pix, cartão e boleto) e documentação no formato acadêmico |
 | [1.6.2](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.6.2) | Documentação profissional e padronização de issues, labels e cards |
 | [1.6.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.6.1) | Documentação do projeto e padronização do Git Flow |
