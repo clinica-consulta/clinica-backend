@@ -195,6 +195,11 @@ describe("agendamento", () => {
         assert.ok(avisos.body.some((item) => item.titulo === "Consulta confirmada" && item.lida === false));
     });
 
+    it("não confirma a mesma consulta duas vezes", async () => {
+        const denovo = await api().patch(`/api/consultas/${consultaId}/status`).set(como("recepcao")).send({ status: "Confirmada" });
+        assert.equal(denovo.status, 409);
+    });
+
     it("paciente não pode marcar como realizada", async () => {
         const resposta = await api().patch(`/api/consultas/${consultaId}/status`).set(como("paciente")).send({ status: "Realizada" });
         assert.equal(resposta.status, 403);
@@ -239,7 +244,9 @@ describe("agendamento", () => {
 
         const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
         assert.equal(realizada.body.pagamento.status, "Pendente");
-        const paga = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
+        const realizadaDeNovo = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
+        assert.equal(realizadaDeNovo.status, 409, "registrar realizada só uma vez");
+        const paga =await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
         assert.equal(paga.status, 200);
         assert.equal(paga.body.pagamento.status, "Pago");
         const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento`).set(como("recepcao")).send({ metodo: "Pix" });
