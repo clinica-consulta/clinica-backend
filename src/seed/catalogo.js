@@ -2,6 +2,7 @@ const Usuario = require("../models/Usuario");
 const Profissional = require("../models/Profissional");
 const Especialidade = require("../models/Especialidade");
 const Configuracao = require("../models/Configuracao");
+const Convenio = require("../models/Convenio");
 
 // Atualizações do corpo clínico aplicadas pelo setup, uma única vez por banco.
 // Depois de aplicada, fica registrada na configuração da clínica e não roda de novo,
@@ -189,8 +190,39 @@ const ampliarCorpoClinico = async ({ senha }) => {
     return resumo;
 };
 
+// Convênios mais comuns, prontos para selecionar no cadastro do paciente.
+// Começam cobrindo todas as especialidades; o administrador ajusta as coberturas pelo site.
+const CONVENIOS = [
+    "Particular",
+    "Unimed",
+    "Bradesco Saúde",
+    "SulAmérica",
+    "Amil",
+    "Hapvida",
+    "NotreDame Intermédica",
+    "Porto Seguro Saúde",
+    "Prevent Senior",
+    "Golden Cross",
+    "Cassi",
+    "São Francisco Saúde"
+];
+
+// Cadastra os convênios que ainda não existem. Não mexe nos que já estão cadastrados.
+const cadastrarConvenios = async () => {
+    const criados = [];
+    for (const nome of CONVENIOS) {
+        if (await Convenio.exists({ nome: mesmoNome(nome) })) continue;
+        await Convenio.create({ nome, coberturas: [], ativo: true });
+        criados.push(nome);
+    }
+    return { convenios: criados };
+};
+
 // Lista de atualizações em ordem. Para acrescentar dados no futuro, adicione um item com um id novo.
-const ATUALIZACOES = [{ id: "2026-10-corpo-clinico", descricao: "Novas especialidades e 2 médicos por especialidade", executar: ampliarCorpoClinico }];
+const ATUALIZACOES = [
+    { id: "2026-10-corpo-clinico", descricao: "Novas especialidades e 2 médicos por especialidade", executar: ampliarCorpoClinico },
+    { id: "2026-11-convenios", descricao: "Convênios mais comuns prontos para selecionar", executar: cadastrarConvenios }
+];
 
 const aplicarAtualizacoes = async ({ senha }) => {
     const configuracao = await Configuracao.obter();
@@ -205,4 +237,4 @@ const aplicarAtualizacoes = async ({ senha }) => {
     return relatorio;
 };
 
-module.exports = { aplicarAtualizacoes, ESPECIALIDADES, emailDe };
+module.exports = { aplicarAtualizacoes, ESPECIALIDADES, CONVENIOS, emailDe };

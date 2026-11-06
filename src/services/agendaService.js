@@ -4,10 +4,11 @@ const Especialidade = require("../models/Especialidade");
 const Convenio = require("../models/Convenio");
 const Bloqueio = require("../models/Bloqueio");
 const Consulta = require("../models/Consulta");
-const { dataISO, horaAtual, diaDaSemana, minutos, intervaloDeHorarios } = require("../utils/datas");
+const { dataISO, horaAtual, diaDaSemana, minutos, intervaloDeHorarios, formatarDataBR } = require("../utils/datas");
 
-// Regra de negócio: paciente ativo, especialidade ativa e coberta pelo convênio.
-const verificarElegibilidade = async (pacienteId, especialidade) => {
+// Regra de negócio: paciente ativo, especialidade ativa, carteirinha válida e especialidade coberta pelo convênio.
+// "data" é o dia da consulta: a carteirinha do convênio precisa estar válida nesse dia.
+const verificarElegibilidade = async (pacienteId, especialidade, data = dataISO()) => {
     const paciente = await Paciente.findById(pacienteId);
     if (!paciente) return { ok: false, motivo: "Paciente sem cadastro na clínica." };
     if (paciente.status !== "Ativo") return { ok: false, motivo: "Cadastro do paciente está inativo." };
@@ -15,11 +16,21 @@ const verificarElegibilidade = async (pacienteId, especialidade) => {
     const cadastro = await Especialidade.findOne({ nome: especialidade });
     if (!cadastro || !cadastro.ativo) return { ok: false, motivo: "Especialidade indisponível no momento." };
 
-    const convenio = await Convenio.findOne({ nome: paciente.convenio });
-    if (!convenio || !convenio.ativo || !convenio.coberturas.length) {
+    if (!paciente.convenio || paciente.convenio === "Particular") {
         return { ok: true, motivo: `Atendimento particular para ${especialidade}.` };
     }
-    if (!convenio.coberturas.includes(especialidade)) {
+    const convenio = await Convenio.findOne({ nome: paciente.convenio });
+    if (!convenio || !convenio.ativo) {
+        return { ok: false, motivo: `O convênio ${paciente.convenio} não é mais aceito pela clínica. Atualize o cadastro do paciente.` };
+    }
+    const { numero, validade } = paciente.carteirinha ?? {};
+    if (!numero || !validade) {
+        return { ok: false, motivo: `Cadastre a carteirinha do ${convenio.nome} (número, validade e plano) para agendar.` };
+    }
+    if (validade < data) {
+        return { ok: false, motivo: `A carteirinha do ${convenio.nome} venceu em ${formatarDataBR(validade)}. Atualize a validade no cadastro.` };
+    }
+    if (convenio.coberturas.length && !convenio.coberturas.includes(especialidade)) {
         return { ok: false, motivo: `O convênio ${convenio.nome} não cobre ${especialidade}.` };
     }
     return { ok: true, motivo: `${convenio.nome} cobre ${especialidade}.` };
