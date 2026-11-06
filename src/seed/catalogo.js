@@ -173,10 +173,12 @@ const ampliarCorpoClinico = async ({ senha }) => {
     const especialidades = await Especialidade.find({ ativo: true }).sort({ nome: 1 });
     for (const especialidade of especialidades) {
         const doCatalogo = ESPECIALIDADES.find((item) => item.nome.toLowerCase() === especialidade.nome.toLowerCase());
-        const candidatos = doCatalogo ? [...doCatalogo.medicos] : reserva;
+        // Médicos do catálogo primeiro; se algum já existe (por exemplo, numa especialidade renomeada), usa a reserva.
+        const doCatalogoLivres = doCatalogo ? [...doCatalogo.medicos] : [];
         let ativos = await Profissional.countDocuments({ especialidade: mesmoNome(especialidade.nome), ativo: true });
-        while (ativos < MEDICOS_POR_ESPECIALIDADE && candidatos.length) {
-            const criado = await criarMedico(candidatos.shift(), especialidade.nome, indice, senha);
+        while (ativos < MEDICOS_POR_ESPECIALIDADE && (doCatalogoLivres.length || reserva.length)) {
+            const proximo = doCatalogoLivres.length ? doCatalogoLivres.shift() : reserva.shift();
+            const criado = await criarMedico(proximo, especialidade.nome, indice, senha);
             indice += 1;
             if (criado) {
                 ativos += 1;
