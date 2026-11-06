@@ -26,17 +26,16 @@ const consultaSchema = new mongoose.Schema(
         respostaConfirmacao: { type: String, enum: ["Confirmou", "Cancelou", "Sem resposta"], default: "Sem resposta" },
         historico: { type: [registroSchema], default: [] },
         // Cobrança criada quando a consulta de um paciente particular é realizada.
-        // Com MP_ACCESS_TOKEN definido, o pagamento é feito pelo Mercado Pago.
+        // Com as chaves do Stripe definidas, o paciente paga pelo Stripe dentro do site.
         pagamento: {
             status: { type: String, enum: ["Pendente", "Pago", null], default: null },
             valor: { type: Number, default: 0 },
             metodo: { type: String, default: "" },
             codigo: { type: String, default: "" },
             pagoEm: { type: Date, default: null },
-            gateway: { type: String, enum: ["", "Mercado Pago", "Recepção"], default: "" },
-            // Link do checkout do Mercado Pago e identificadores da transação.
-            linkPagamento: { type: String, default: "" },
-            preferenciaId: { type: String, default: "" },
+            gateway: { type: String, enum: ["", "Stripe", "Recepção"], default: "" },
+            // Sessão de pagamento do Stripe e identificadores da transação.
+            sessaoId: { type: String, default: "" },
             transacaoId: { type: String, default: "" },
             situacaoGateway: { type: String, default: "" }
         }
