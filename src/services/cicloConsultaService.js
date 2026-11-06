@@ -4,8 +4,8 @@ const Profissional = require("../models/Profissional");
 const Configuracao = require("../models/Configuracao");
 const { dataISO, horaAtual, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("./notificacaoService");
-const { enviarEmail } = require("./emailService");
-const { avisarCobranca, urlDoSite } = require("./pagamentoService");
+const { avisarCobranca } = require("./pagamentoService");
+const { enviarEmailDaConsulta } = require("./emailConsultaService");
 
 const { STATUS_ABERTOS } = Consulta;
 
@@ -49,19 +49,13 @@ const avisarAusencia = async (consulta) => {
         acao: "remarcar"
     });
 
-    const paciente = await Paciente.findById(consulta.paciente);
-    if (!paciente?.email) return;
-    const agendar = urlDoSite() ? `${urlDoSite()}/paciente/agendar` : "";
-    await enviarEmail({
-        para: paciente.email,
-        assunto: `Consulta #${consulta.codigo}: vamos agendar um novo horário?`,
-        texto:
-            `Olá, ${paciente.nome}!\n\n` +
-            `Notamos que você não compareceu à consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}.\n` +
-            "Se quiser, é só escolher um novo dia e horário:\n" +
-            (agendar ? `${agendar}\n\n` : "acesse o portal do paciente e agende uma nova consulta.\n\n") +
-            "Se tiver qualquer dúvida, fale com a recepção da clínica."
-    }).catch((erro) => console.error("Falha ao enviar e-mail de ausência:", erro.message));
+    await enviarEmailDaConsulta(consulta, {
+        assunto: "Vamos agendar um novo horário?",
+        mensagem: "Notamos que você não compareceu a esta consulta. Se quiser, é só escolher um novo dia e horário.",
+        chamada: "Agende um novo horário pelo portal do paciente:",
+        caminho: "/paciente/agendar",
+        observacao: "Se tiver qualquer dúvida, fale com a recepção da clínica."
+    });
 };
 
 // Pede ao paciente (no portal e por e-mail) que confirme a presença. Só o paciente confirma.
@@ -76,19 +70,11 @@ const pedirConfirmacao = async (consulta) => {
         consulta: consulta._id
     });
 
-    const paciente = await Paciente.findById(consulta.paciente);
-    if (!paciente?.email) return;
-    const portal = urlDoSite() ? `${urlDoSite()}/paciente` : "";
-    await enviarEmail({
-        para: paciente.email,
-        assunto: `Confirme sua consulta #${consulta.codigo}`,
-        texto:
-            `Olá, ${paciente.nome}!\n\n` +
-            `Você tem consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}.\n` +
-            "Confirme sua presença (ou cancele, se não puder ir) no portal do paciente:\n" +
-            (portal ? `${portal}\n\n` : "acesse o portal do paciente.\n\n") +
-            "Sua consulta só fica confirmada depois da sua resposta."
-    }).catch((erro) => console.error("Falha ao enviar e-mail de confirmação:", erro.message));
+    await enviarEmailDaConsulta(consulta, {
+        assunto: "Confirme sua consulta",
+        mensagem: "A clínica pede que você confirme sua presença nesta consulta. Ela só fica confirmada depois da sua resposta.",
+        chamada: "Confirme sua presença (ou cancele, se não puder ir) no portal do paciente:"
+    });
 };
 
 // Libera a cobrança do paciente particular quando a consulta é realizada.
