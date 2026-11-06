@@ -59,6 +59,18 @@ const obter = async (req, res) => {
     res.json(await buscar(req, req.params.id));
 };
 
+// GET /consultas/ocupados?inicio=&fim=
+// Horários já tomados por consultas não canceladas, de todos os pacientes, para qualquer perfil logado.
+// Devolve só médico, data e hora (e o id, para a remarcação ignorar a própria consulta): nada do paciente.
+const ocupados = async (req, res) => {
+    const inicio = req.query.inicio || dataISO();
+    const fim = req.query.fim || dataISO(90);
+    const consultas = await Consulta.find({ data: { $gte: inicio, $lte: fim }, status: { $ne: "Cancelada" } })
+        .select("profissional data hora")
+        .lean();
+    res.json(consultas.map((item) => ({ id: String(item._id), profissional: String(item.profissional), data: item.data, hora: item.hora })));
+};
+
 // GET /consultas/horarios?profissional=&data=&ignorar=
 const horarios = async (req, res) => {
     const { profissional, data, ignorar } = req.query;
@@ -386,6 +398,7 @@ module.exports = {
     listar,
     obter,
     horarios,
+    ocupados,
     elegibilidade,
     criar,
     alterarStatus,

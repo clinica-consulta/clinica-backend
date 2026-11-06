@@ -8,6 +8,7 @@ rotas.use(autenticar);
 
 rotas.get("/", controller.listar);
 rotas.get("/horarios", controller.horarios);
+rotas.get("/ocupados", controller.ocupados);
 rotas.get("/elegibilidade", controller.elegibilidade);
 rotas.post("/", permitir(...EQUIPE, "paciente"), controller.criar);
 rotas.post("/lembretes", permitir(...EQUIPE), controller.enviarLembretesPendentes);
