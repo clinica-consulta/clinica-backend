@@ -447,6 +447,7 @@ O projeto resultou em uma API funcional e publicada, integrada à interface web 
 
 | Versão | Entregas |
 |---|---|
+| [1.9.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.9.0) | Ciclo da consulta: encerramento automático 1 hora após o horário, aviso de ausência e lembrete de pagamento |
 | [1.8.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.8.1) | Setup completa cada especialidade com 2 médicos mesmo depois de renomeada |
 | [1.8.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.8.0) | Lembrete, confirmação e registro de consulta realizada feitos uma única vez |
 | [1.7.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.7.0) | Pagamento on-line da consulta particular pelo Stripe (Pix, cartão e boleto) e documentação no formato acadêmico |
