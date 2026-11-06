@@ -190,6 +190,13 @@ describe("agendamento", () => {
         assert.match(resposta.body.mensagem, /não cobre Cardiologia/);
     });
 
+    it("paciente só confirma depois do pedido da recepção", async () => {
+        const antes = await api().patch(`/api/consultas/${consultaId}/status`).set(como("paciente")).send({ status: "Confirmada" });
+        assert.equal(antes.status, 409, "sem pedido de confirmação ainda");
+        const pedido = await api().post(`/api/consultas/${consultaId}/lembrete`).set(como("recepcao"));
+        assert.equal(pedido.status, 200);
+    });
+
     it("paciente confirma e recebe o aviso", async () => {
         const resposta = await api().patch(`/api/consultas/${consultaId}/status`).set(como("paciente")).send({ status: "Confirmada" });
         assert.equal(resposta.status, 200);

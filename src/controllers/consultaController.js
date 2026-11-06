@@ -10,6 +10,7 @@ const stripe = require("../services/stripeService");
 const { ErroGateway } = stripe;
 const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
 const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca, pedirConfirmacao } = require("../services/cicloConsultaService");
+const { enviarEmailDaConsulta } = require("../services/emailConsultaService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
 // Status que registram o resultado do atendimento (só valem do horário até 1 hora depois).
@@ -115,6 +116,11 @@ const criar = async (req, res) => {
         profissional: profissional._id
     });
 
+    await enviarEmailDaConsulta(consulta, {
+        assunto: "Consulta marcada",
+        mensagem: "Sua consulta foi marcada. Ela ainda não está confirmada: a recepção vai enviar um pedido de confirmação, e aí é só confirmar sua presença pelo portal."
+    });
+
     res.status(201).json(consulta);
 };
 
@@ -136,6 +142,9 @@ const alterarStatus = async (req, res) => {
 
     const consulta = await buscar(req, req.params.id);
     if (consulta.status === status) throw new AppError(`A consulta já está como "${consulta.status}"`, 409);
+    if (status === "Confirmada" && !consulta.lembreteEnviadoEm) {
+        throw new AppError("A confirmação fica disponível quando a recepção enviar o pedido de confirmação", 409);
+    }
     if (consulta.status === "Cancelada") throw new AppError("A consulta foi cancelada e não pode mais ser alterada", 409);
 
     const resultado = RESULTADOS.includes(status);
@@ -182,6 +191,7 @@ const alterarStatus = async (req, res) => {
             paciente: consulta.paciente,
             profissional: consulta.profissional
         });
+        await enviarEmailDaConsulta(consulta, { assunto: "Presença confirmada", mensagem: "Recebemos a confirmação da sua presença. Esperamos você!", observacao: "Se não puder ir, cancele pelo portal para liberar o horário para outro paciente." });
     }
     if (cobrar) {
         // Libera a cobrança e avisa o paciente no portal e por e-mail.
@@ -197,6 +207,7 @@ const alterarStatus = async (req, res) => {
             texto: `${quando} voltou a ficar disponível na agenda.`,
             publico: ["recepcionista", "administrador"]
         });
+        await enviarEmailDaConsulta(consulta, { assunto: "Consulta cancelada", mensagem: "Esta consulta foi cancelada e o horário foi liberado.", chamada: "Se quiser, agende um novo horário pelo portal do paciente:", caminho: "/paciente/agendar" });
     }
 
     res.json(consulta);
@@ -221,8 +232,8 @@ const remarcar = async (req, res) => {
     if (!livres.includes(hora)) throw new AppError("Horário indisponível para este profissional", 409);
 
     const anterior = `${consulta.data} ${consulta.hora}`;
-    // O lembrete não é zerado: cada consulta recebe no máximo um.
-    consulta.set({ data, hora, status: "Remarcada", respostaConfirmacao: "Sem resposta" });
+    // Data nova pede confirmação nova: a recepção envia outro pedido, e só então o paciente confirma.
+    consulta.set({ data, hora, status: "Remarcada", respostaConfirmacao: "Sem resposta", lembreteEnviadoEm: null });
     registrar(consulta, `Remarcada de ${anterior} para ${data} ${hora}`);
     await consulta.save();
 
@@ -234,6 +245,7 @@ const remarcar = async (req, res) => {
         paciente: consulta.paciente,
         profissional: consulta.profissional
     });
+    await enviarEmailDaConsulta(consulta, { assunto: "Consulta remarcada", mensagem: `Sua consulta mudou de data (antes: ${formatarDataBR(anterior.slice(0, 10))} às ${anterior.slice(11)}). A recepção vai pedir a confirmação da nova data.` });
 
     res.json(consulta);
 };
