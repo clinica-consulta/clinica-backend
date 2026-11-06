@@ -3,7 +3,7 @@ const Usuario = require("../models/Usuario");
 const AppError = require("../utils/AppError");
 const { escolherCampos } = require("../utils/texto");
 
-const CAMPOS = ["nome", "cpf", "telefone", "email", "dataNascimento", "convenio"];
+const CAMPOS = ["nome", "cpf", "telefone", "email", "dataNascimento", "convenio", "carteirinha"];
 const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
 
 const buscar = async (req, id) => {

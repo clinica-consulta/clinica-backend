@@ -24,7 +24,7 @@ const login = async (req, res) => {
 
 // Cadastro público: cria o paciente e o usuário de acesso dele.
 const cadastro = async (req, res) => {
-    const { nome, cpf, telefone, email, senha, dataNascimento, convenio } = req.body ?? {};
+    const { nome, cpf, telefone, email, senha, dataNascimento, convenio, carteirinha } = req.body ?? {};
     if (!senha || String(senha).length < 6) throw new AppError("A senha precisa ter pelo menos 6 caracteres");
 
     const emailNormalizado = String(email ?? "").toLowerCase().trim();
@@ -32,7 +32,7 @@ const cadastro = async (req, res) => {
         throw new AppError("Já existe uma conta com este e-mail", 409);
     }
 
-    const paciente = await Paciente.create({ nome, cpf, telefone, email: emailNormalizado, dataNascimento, convenio });
+    const paciente = await Paciente.create({ nome, cpf, telefone, email: emailNormalizado, dataNascimento, convenio, carteirinha });
     try {
         const usuario = await Usuario.create({
             nome,

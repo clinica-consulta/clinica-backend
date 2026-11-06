@@ -24,13 +24,16 @@ const convenios = [
     { nome: "VidaMais", coberturas: ["Clínica geral", "Dermatologia"] }
 ];
 
+// Carteirinha válida por mais 2 anos a partir de hoje.
+const carteirinha = (numero, plano) => ({ numero, plano, validade: dia(730) });
+
 const pacientes = [
-    { chave: "p1", nome: "Marina Costa", cpf: "123.456.789-09", telefone: "(11) 99842-1034", email: "paciente@demo.com", dataNascimento: "1992-04-12", convenio: "Saúde Total" },
-    { chave: "p2", nome: "Roberto Lima", cpf: "234.567.890-92", telefone: "(11) 97118-5220", email: "roberto@email.com", dataNascimento: "1985-09-03", convenio: "VidaMais" },
+    { chave: "p1", nome: "Marina Costa", cpf: "123.456.789-09", telefone: "(11) 99842-1034", email: "paciente@demo.com", dataNascimento: "1992-04-12", convenio: "Saúde Total", carteirinha: carteirinha("0001 2345 6789 0001", "Apartamento") },
+    { chave: "p2", nome: "Roberto Lima", cpf: "234.567.890-92", telefone: "(11) 97118-5220", email: "roberto@email.com", dataNascimento: "1985-09-03", convenio: "VidaMais", carteirinha: carteirinha("8820 1100 3344", "Enfermaria") },
     { chave: "p3", nome: "Camila Duarte", cpf: "345.678.901-75", telefone: "(11) 98720-4102", email: "camila@email.com", dataNascimento: "1990-01-27", convenio: "Particular" },
-    { chave: "p4", nome: "João Pedro Reis", cpf: "456.789.012-49", telefone: "(11) 96544-9091", email: "joao@email.com", dataNascimento: "1978-06-15", convenio: "VidaMais" },
+    { chave: "p4", nome: "João Pedro Reis", cpf: "456.789.012-49", telefone: "(11) 96544-9091", email: "joao@email.com", dataNascimento: "1978-06-15", convenio: "VidaMais", carteirinha: carteirinha("8820 1100 5566", "Enfermaria") },
     { chave: "p5", nome: "Beatriz Souza", cpf: "567.890.123-03", telefone: "(11) 99940-2377", email: "beatriz@email.com", dataNascimento: "1999-11-08", convenio: "Particular", status: "Inativo" },
-    { chave: "p6", nome: "Sofia Almeida", cpf: "678.901.234-69", telefone: "(11) 98111-7742", email: "sofia@email.com", dataNascimento: "1996-02-19", convenio: "Saúde Total" },
+    { chave: "p6", nome: "Sofia Almeida", cpf: "678.901.234-69", telefone: "(11) 98111-7742", email: "sofia@email.com", dataNascimento: "1996-02-19", convenio: "Saúde Total", carteirinha: carteirinha("0001 2345 6789 0006", "Enfermaria") },
     { chave: "p7", nome: "Carlos Mendes", cpf: "789.012.345-05", telefone: "(11) 97402-3388", email: "carlos@email.com", dataNascimento: "1971-08-30", convenio: "Particular" }
 ];
 

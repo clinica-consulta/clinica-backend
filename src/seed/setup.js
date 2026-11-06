@@ -30,7 +30,7 @@ const Profissional = require("../models/Profissional");
 const Especialidade = require("../models/Especialidade");
 const Convenio = require("../models/Convenio");
 const Configuracao = require("../models/Configuracao");
-const { aplicarAtualizacoes } = require("./catalogo");
+const { aplicarAtualizacoes, CONVENIOS } = require("./catalogo");
 
 // Cria o banco da Clínica Senai com os acessos iniciais.
 // A senha do administrador é pedida no terminal na primeira vez (ou lida de ADMIN_SENHA no .env) e nunca fica no código.
@@ -49,7 +49,7 @@ const DADOS = {
         email: "contato@senai.org.br"
     },
     especialidades: ["Clínica geral", "Cardiologia", "Pediatria"],
-    convenios: ["Particular", "Unimed"],
+    convenios: CONVENIOS,
     administradores: [{ nome: "Marco", email: "marco@senai.org.br", pedirSenha: true }],
     recepcionistas: [{ nome: "Juliana Souza", email: "recepcao@senai.org.br", telefone: "(11) 98888-1111" }],
     profissionais: [
