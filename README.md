@@ -186,7 +186,7 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RN03 | O agendamento exige paciente ativo, especialidade ativa e coberta pelo convênio e, para quem tem convênio, carteirinha válida no dia da consulta. |
 | RN04 | O cancelamento libera o horário imediatamente. |
 | RN05 | Após a remarcação, a confirmação volta para "Sem resposta" até o paciente confirmar a nova data. |
-| RN06 | Toda consulta nasce aguardando confirmação. A recepção envia um único pedido de confirmação (portal e e-mail), e só o próprio paciente confirma a presença. |
+| RN06 | Toda consulta nasce aguardando confirmação. A recepção envia um único pedido de confirmação (portal e e-mail), e só depois dele o próprio paciente pode confirmar a presença. Ao remarcar, a nova data pede um novo pedido. |
 | RN07 | A cobrança é gerada somente para pacientes do convênio Particular e somente após a consulta realizada. |
 | RN08 | O valor cobrado é definido no servidor; pagamento com valor inferior ao cobrado não é aceito. |
 | RN09 | Pacientes, profissionais e especialidades desativados mantêm o histórico e deixam de aceitar agendamentos. |
@@ -249,7 +249,7 @@ flowchart LR
 | Framework web | Express 5 | Simplicidade na definição de rotas e middlewares |
 | Banco de dados | MongoDB com Mongoose | Modelo de documentos flexível e validação de esquema na aplicação |
 | Autenticação | JSON Web Token (JWT) e bcrypt | Sessão sem estado e armazenamento seguro de senhas |
-| E-mail | API do Brevo ou SMTP (Nodemailer) | Envio de códigos de redefinição e avisos de cobrança |
+| E-mail | API do Brevo ou SMTP (Nodemailer) | Códigos de redefinição de senha e avisos da consulta ao paciente: marcada, pedido de confirmação, confirmada, remarcada, cancelada, ausência, cobrança e lembrete de pagamento |
 | Pagamentos | Stripe (Checkout embutido e webhooks) | Pix, cartão e boleto com conformidade PCI garantida pelo gateway |
 | Testes | `node:test` e Supertest | Testes de integração sem dependências pesadas |
 | Hospedagem | Render e MongoDB Atlas | Publicação contínua e banco gerenciado |
