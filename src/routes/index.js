@@ -18,5 +18,6 @@ rotas.use("/relatorios", require("./relatorioRoutes"));
 rotas.use("/especialidades", require("./especialidadeRoutes"));
 rotas.use("/convenios", require("./convenioRoutes"));
 rotas.use("/configuracoes", require("./configuracaoRoutes"));
+rotas.use("/pagamentos", require("./pagamentoRoutes"));
 
 module.exports = rotas;

@@ -234,7 +234,7 @@ describe("agendamento", () => {
             .post("/api/consultas")
             .set(como("recepcao"))
             .send({ paciente: particular.id, profissional: ana.id, data, hora: "13:00" });
-        assert.equal(criada.status, 201);
+        assert.equal(criada.status, 201, JSON.stringify(criada.body));
         assert.equal(criada.body.pagamento?.status ?? null, null, "sem cobrança ao agendar");
 
         const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
@@ -251,6 +251,122 @@ describe("agendamento", () => {
             .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:30" });
         const semCobranca = await api().patch(`/api/consultas/${deConvenio.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
         assert.equal(semCobranca.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
+    });
+
+    it("cobra pelo Stripe dentro do site e confirma pelo webhook", async () => {
+        const Notificacao = require("../src/models/Notificacao");
+        const StripeSDK = require("stripe");
+        const Stripe = StripeSDK.default || StripeSDK;
+        const stripeService = require("../src/services/stripeService");
+        const reais = new Stripe("sk_test_fake").webhooks;
+        const criadas = [];
+        const sessoes = new Map();
+        // Simula a API do Stripe: nenhuma chamada sai para a internet nos testes.
+        stripeService.usarClienteDeTeste({
+            webhooks: reais,
+            checkout: {
+                sessions: {
+                    create: async (dados) => {
+                        const sessao = {
+                            id: `cs_test_${criadas.length + 1}`,
+                            client_secret: `cs_test_${criadas.length + 1}_secret`,
+                            status: "open",
+                            payment_status: "unpaid",
+                            amount_total: dados.line_items[0].price_data.unit_amount,
+                            metadata: dados.metadata,
+                            client_reference_id: dados.client_reference_id,
+                            payment_intent: null
+                        };
+                        criadas.push(dados);
+                        sessoes.set(sessao.id, sessao);
+                        return sessao;
+                    },
+                    retrieve: async (id) => sessoes.get(id)
+                }
+            }
+        });
+        Object.assign(process.env, {
+            STRIPE_SECRET_KEY: "sk_test_fake",
+            STRIPE_PUBLISHABLE_KEY: "pk_test_fake",
+            STRIPE_WEBHOOK_SECRET: "whsec_teste",
+            FRONTEND_URL: "https://site.test"
+        });
+        const enviarWebhook = (tipo, sessao) => {
+            const payload = JSON.stringify({ id: "evt_1", object: "event", type: tipo, data: { object: sessao } });
+            const assinatura = reais.generateTestHeaderString({ payload, secret: "whsec_teste" });
+            return api().post("/api/pagamentos/webhook").set("Content-Type", "application/json").set("Stripe-Signature", assinatura).send(payload);
+        };
+
+        try {
+            const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
+            const particular = pacientes.body.find((item) => item.convenio === "Particular" && item.status === "Ativo");
+            const livres = await api().get(`/api/consultas/horarios?profissional=${ana.id}&data=${data}`).set(como("recepcao"));
+            const criada = await api()
+                .post("/api/consultas")
+                .set(como("recepcao"))
+                .send({ paciente: particular.id, profissional: ana.id, data, hora: livres.body.horarios[0] });
+            assert.equal(criada.status, 201, JSON.stringify(criada.body));
+
+            const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("profissional")).send({ status: "Realizada" });
+            assert.equal(realizada.status, 200);
+            assert.equal(realizada.body.pagamento.status, "Pendente");
+            const aviso = await Notificacao.findOne({ consulta: criada.body.id, acao: "pagamento" });
+            assert.ok(aviso, "paciente recebe o aviso de pagamento disponível");
+
+            const config = await api().get("/api/pagamentos/config");
+            assert.deepEqual(config.body, { gateway: "Stripe", teste: true });
+
+            const checkout = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
+            assert.equal(checkout.status, 200, JSON.stringify(checkout.body));
+            assert.equal(checkout.body.clientSecret, "cs_test_1_secret");
+            assert.equal(checkout.body.chavePublica, "pk_test_fake");
+            const enviada = criadas[0];
+            assert.equal(enviada.ui_mode, "embedded_page");
+            assert.equal(enviada.redirect_on_completion, "if_required");
+            assert.equal(enviada.payment_method_types, undefined, "usa as formas de pagamento ativas no painel");
+            assert.equal(enviada.line_items[0].price_data.currency, "brl");
+            assert.equal(enviada.line_items[0].price_data.unit_amount, Math.round(realizada.body.pagamento.valor * 100));
+            assert.equal(enviada.metadata.consulta, criada.body.id);
+
+            // Abrir de novo reaproveita a sessão aberta.
+            const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
+            assert.equal(denovo.body.clientSecret, "cs_test_1_secret");
+            assert.equal(criadas.length, 1);
+
+            // Pix enviado, mas ainda não compensado: continua pendente.
+            const sessao = sessoes.get("cs_test_1");
+            Object.assign(sessao, { status: "complete", payment_status: "unpaid" });
+            assert.equal((await enviarWebhook("checkout.session.completed", sessao)).status, 200);
+            const aguardando = await api().post(`/api/consultas/${criada.body.id}/pagamento/verificar`).set(como("recepcao"));
+            assert.equal(aguardando.body.pagamento.status, "Pendente");
+            assert.equal((await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"))).status, 409);
+
+            // Pix compensado.
+            Object.assign(sessao, {
+                payment_status: "paid",
+                payment_intent: { id: "pi_teste123456789", latest_charge: { payment_method_details: { type: "pix" } } }
+            });
+            assert.equal((await enviarWebhook("checkout.session.async_payment_succeeded", sessao)).status, 200);
+            const paga = await api().get(`/api/consultas/${criada.body.id}`).set(como("recepcao"));
+            assert.equal(paga.body.pagamento.status, "Pago");
+            assert.equal(paga.body.pagamento.metodo, "Pix");
+            assert.equal(paga.body.pagamento.gateway, "Stripe");
+
+            // Webhook repetido não gera pagamento em dobro.
+            await enviarWebhook("checkout.session.async_payment_succeeded", sessao);
+            assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento confirmado", consulta: criada.body.id }), 1);
+
+            // Assinatura falsa é recusada.
+            const falso = await api()
+                .post("/api/pagamentos/webhook")
+                .set("Content-Type", "application/json")
+                .set("Stripe-Signature", "t=1,v1=abc")
+                .send(JSON.stringify({ type: "checkout.session.completed", data: { object: sessao } }));
+            assert.equal(falso.status, 400);
+        } finally {
+            stripeService.usarClienteDeTeste(null);
+            for (const chave of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "FRONTEND_URL"]) delete process.env[chave];
+        }
     });
 
     it("não oferece horários que já passaram", async () => {
