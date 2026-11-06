@@ -253,23 +253,49 @@ describe("agendamento", () => {
         assert.equal(semCobranca.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
     });
 
-    it("cobra pelo Mercado Pago e confirma pelo webhook", async () => {
+    it("cobra pelo Stripe dentro do site e confirma pelo webhook", async () => {
         const Notificacao = require("../src/models/Notificacao");
-        const fetchOriginal = global.fetch;
-        const chamadas = [];
-        let pagamentoNoGateway = null;
-        // Simula a API do Mercado Pago: nenhuma chamada sai para a internet nos testes.
-        global.fetch = async (url, opcoes = {}) => {
-            chamadas.push({ url: String(url), metodo: opcoes.method, corpo: opcoes.body ? JSON.parse(opcoes.body) : null });
-            const responder = (dados) => new Response(JSON.stringify(dados), { status: 200, headers: { "Content-Type": "application/json" } });
-            if (String(url).endsWith("/checkout/preferences")) {
-                return responder({ id: `pref-${chamadas.length}`, init_point: "https://mp.test/init", sandbox_init_point: "https://mp.test/sandbox" });
+        const StripeSDK = require("stripe");
+        const Stripe = StripeSDK.default || StripeSDK;
+        const stripeService = require("../src/services/stripeService");
+        const reais = new Stripe("sk_test_fake").webhooks;
+        const criadas = [];
+        const sessoes = new Map();
+        // Simula a API do Stripe: nenhuma chamada sai para a internet nos testes.
+        stripeService.usarClienteDeTeste({
+            webhooks: reais,
+            checkout: {
+                sessions: {
+                    create: async (dados) => {
+                        const sessao = {
+                            id: `cs_test_${criadas.length + 1}`,
+                            client_secret: `cs_test_${criadas.length + 1}_secret`,
+                            status: "open",
+                            payment_status: "unpaid",
+                            amount_total: dados.line_items[0].price_data.unit_amount,
+                            metadata: dados.metadata,
+                            client_reference_id: dados.client_reference_id,
+                            payment_intent: null
+                        };
+                        criadas.push(dados);
+                        sessoes.set(sessao.id, sessao);
+                        return sessao;
+                    },
+                    retrieve: async (id) => sessoes.get(id)
+                }
             }
-            if (String(url).includes("/v1/payments/search")) return responder({ results: pagamentoNoGateway ? [pagamentoNoGateway] : [] });
-            if (String(url).includes("/v1/payments/")) return responder(pagamentoNoGateway);
-            return new Response("{}", { status: 404 });
+        });
+        Object.assign(process.env, {
+            STRIPE_SECRET_KEY: "sk_test_fake",
+            STRIPE_PUBLISHABLE_KEY: "pk_test_fake",
+            STRIPE_WEBHOOK_SECRET: "whsec_teste",
+            FRONTEND_URL: "https://site.test"
+        });
+        const enviarWebhook = (tipo, sessao) => {
+            const payload = JSON.stringify({ id: "evt_1", object: "event", type: tipo, data: { object: sessao } });
+            const assinatura = reais.generateTestHeaderString({ payload, secret: "whsec_teste" });
+            return api().post("/api/pagamentos/webhook").set("Content-Type", "application/json").set("Stripe-Signature", assinatura).send(payload);
         };
-        Object.assign(process.env, { MP_ACCESS_TOKEN: "TEST-token", FRONTEND_URL: "https://site.test", API_PUBLIC_URL: "https://api.test" });
 
         try {
             const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
@@ -284,62 +310,62 @@ describe("agendamento", () => {
             const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("profissional")).send({ status: "Realizada" });
             assert.equal(realizada.status, 200);
             assert.equal(realizada.body.pagamento.status, "Pendente");
-            assert.equal(realizada.body.pagamento.gateway, "Mercado Pago");
-            assert.equal(realizada.body.pagamento.linkPagamento, "https://mp.test/sandbox", "credencial de teste usa o checkout de teste");
-
-            const preferencia = chamadas.find((item) => item.url.endsWith("/checkout/preferences")).corpo;
-            assert.equal(preferencia.external_reference, criada.body.id);
-            assert.equal(preferencia.items[0].unit_price, realizada.body.pagamento.valor);
-            assert.equal(preferencia.notification_url, "https://api.test/api/pagamentos/webhook");
-            assert.match(preferencia.back_urls.success, /^https:\/\/site\.test\/paciente\?pagamento=aprovado/);
-
             const aviso = await Notificacao.findOne({ consulta: criada.body.id, acao: "pagamento" });
             assert.ok(aviso, "paciente recebe o aviso de pagamento disponível");
 
+            const config = await api().get("/api/pagamentos/config");
+            assert.deepEqual(config.body, { gateway: "Stripe", teste: true });
+
             const checkout = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
-            assert.equal(checkout.status, 200);
-            assert.equal(checkout.body.url, "https://mp.test/sandbox");
+            assert.equal(checkout.status, 200, JSON.stringify(checkout.body));
+            assert.equal(checkout.body.clientSecret, "cs_test_1_secret");
+            assert.equal(checkout.body.chavePublica, "pk_test_fake");
+            const enviada = criadas[0];
+            assert.equal(enviada.ui_mode, "embedded_page");
+            assert.equal(enviada.redirect_on_completion, "if_required");
+            assert.equal(enviada.payment_method_types, undefined, "usa as formas de pagamento ativas no painel");
+            assert.equal(enviada.line_items[0].price_data.currency, "brl");
+            assert.equal(enviada.line_items[0].price_data.unit_amount, Math.round(realizada.body.pagamento.valor * 100));
+            assert.equal(enviada.metadata.consulta, criada.body.id);
 
-            // Ainda sem pagamento aprovado no gateway.
-            const antes = await api().post(`/api/consultas/${criada.body.id}/pagamento/verificar`).set(como("recepcao"));
-            assert.equal(antes.body.pagamento.status, "Pendente");
+            // Abrir de novo reaproveita a sessão aberta.
+            const denovo = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
+            assert.equal(denovo.body.clientSecret, "cs_test_1_secret");
+            assert.equal(criadas.length, 1);
 
-            pagamentoNoGateway = {
-                id: 987654,
-                status: "approved",
-                external_reference: criada.body.id,
-                transaction_amount: realizada.body.pagamento.valor,
-                payment_method_id: "pix",
-                payment_type_id: "bank_transfer"
-            };
-            const webhook = await api().post("/api/pagamentos/webhook").send({ type: "payment", data: { id: "987654" } });
-            assert.equal(webhook.status, 200);
+            // Pix enviado, mas ainda não compensado: continua pendente.
+            const sessao = sessoes.get("cs_test_1");
+            Object.assign(sessao, { status: "complete", payment_status: "unpaid" });
+            assert.equal((await enviarWebhook("checkout.session.completed", sessao)).status, 200);
+            const aguardando = await api().post(`/api/consultas/${criada.body.id}/pagamento/verificar`).set(como("recepcao"));
+            assert.equal(aguardando.body.pagamento.status, "Pendente");
+            assert.equal((await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"))).status, 409);
 
+            // Pix compensado.
+            Object.assign(sessao, {
+                payment_status: "paid",
+                payment_intent: { id: "pi_teste123456789", latest_charge: { payment_method_details: { type: "pix" } } }
+            });
+            assert.equal((await enviarWebhook("checkout.session.async_payment_succeeded", sessao)).status, 200);
             const paga = await api().get(`/api/consultas/${criada.body.id}`).set(como("recepcao"));
             assert.equal(paga.body.pagamento.status, "Pago");
             assert.equal(paga.body.pagamento.metodo, "Pix");
-            assert.equal(paga.body.pagamento.codigo, "MP-987654");
+            assert.equal(paga.body.pagamento.gateway, "Stripe");
 
             // Webhook repetido não gera pagamento em dobro.
-            await api().post("/api/pagamentos/webhook").send({ type: "payment", data: { id: "987654" } });
+            await enviarWebhook("checkout.session.async_payment_succeeded", sessao);
             assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento confirmado", consulta: criada.body.id }), 1);
-        } finally {
-            global.fetch = fetchOriginal;
-            for (const chave of ["MP_ACCESS_TOKEN", "FRONTEND_URL", "API_PUBLIC_URL"]) delete process.env[chave];
-        }
-    });
 
-    it("recusa webhook do Mercado Pago com assinatura inválida", async () => {
-        Object.assign(process.env, { MP_ACCESS_TOKEN: "TEST-token", MP_WEBHOOK_SECRET: "segredo" });
-        try {
-            const resposta = await api()
+            // Assinatura falsa é recusada.
+            const falso = await api()
                 .post("/api/pagamentos/webhook")
-                .set("x-signature", "ts=1,v1=abc")
-                .set("x-request-id", "r1")
-                .send({ type: "payment", data: { id: "1" } });
-            assert.equal(resposta.status, 401);
+                .set("Content-Type", "application/json")
+                .set("Stripe-Signature", "t=1,v1=abc")
+                .send(JSON.stringify({ type: "checkout.session.completed", data: { object: sessao } }));
+            assert.equal(falso.status, 400);
         } finally {
-            for (const chave of ["MP_ACCESS_TOKEN", "MP_WEBHOOK_SECRET"]) delete process.env[chave];
+            stripeService.usarClienteDeTeste(null);
+            for (const chave of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "FRONTEND_URL"]) delete process.env[chave];
         }
     });
 

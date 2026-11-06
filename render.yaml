@@ -24,10 +24,12 @@ services:
         value: 8h
       - key: SENHA_PADRAO
         value: "123456"
-      # Mercado Pago: Access Token (de teste ou de produção) e chave secreta do webhook.
-      - key: MP_ACCESS_TOKEN
+      # Stripe: chave secreta, chave publicável e segredo de assinatura do webhook.
+      - key: STRIPE_SECRET_KEY
         sync: false
-      - key: MP_WEBHOOK_SECRET
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
         sync: false
       # Endereço do site, para onde o paciente volta depois de pagar.
       - key: FRONTEND_URL

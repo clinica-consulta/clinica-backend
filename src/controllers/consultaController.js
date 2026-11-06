@@ -7,9 +7,9 @@ const AppError = require("../utils/AppError");
 const { dataISO, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("../services/notificacaoService");
 const { verificarElegibilidade, horariosDisponiveis } = require("../services/agendaService");
-const mercadoPago = require("../services/mercadoPagoService");
-const { ErroGateway } = mercadoPago;
-const { avisarCobranca, confirmarPagamento, garantirLinkDePagamento, sincronizarComMercadoPago } = require("../services/pagamentoService");
+const stripe = require("../services/stripeService");
+const { ErroGateway } = stripe;
+const { avisarCobranca, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
 const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
@@ -157,7 +157,7 @@ const alterarStatus = async (req, res) => {
         });
     }
     if (cobrar) {
-        // Gera a cobrança no Mercado Pago e avisa o paciente no portal e por e-mail.
+        // Libera a cobrança e avisa o paciente no portal e por e-mail.
         await avisarCobranca(consulta);
     }
     if (status === "Cancelada") {
@@ -263,12 +263,12 @@ const exigirCobrancaPendente = (consulta) => {
 };
 
 // Registro manual do pagamento. A recepção usa para pagamentos feitos no balcão.
-// Sem Mercado Pago configurado, o paciente também usa (pagamento simulado, para demonstração).
+// Sem o Stripe configurado, o paciente também usa (pagamento simulado, para demonstração).
 const pagar = async (req, res) => {
     const { metodo } = req.body ?? {};
     if (!METODOS.includes(metodo)) throw new AppError(`Escolha a forma de pagamento: ${METODOS.join(", ")}`);
-    if (req.usuario.tipo === "paciente" && mercadoPago.configurado()) {
-        throw new AppError("Pague pelo Mercado Pago: use o botão de pagamento da consulta", 409);
+    if (req.usuario.tipo === "paciente" && stripe.configurado()) {
+        throw new AppError("Use o pagamento on-line da consulta", 409);
     }
 
     const consulta = await buscar(req, req.params.id);
@@ -282,32 +282,34 @@ const pagar = async (req, res) => {
     res.json(consulta);
 };
 
-// Gera o link do Mercado Pago (Pix, crédito ou débito) para o paciente pagar.
+// Abre o pagamento do Stripe (Pix, cartão, boleto...) para ser exibido dentro do site.
 const checkout = async (req, res) => {
-    if (!mercadoPago.configurado()) {
+    if (!stripe.configurado()) {
         throw new AppError("O pagamento on-line ainda não está configurado nesta clínica", 503);
     }
     const consulta = await buscar(req, req.params.id);
-    await sincronizarComMercadoPago(consulta).catch(() => null);
     exigirCobrancaPendente(consulta);
 
-    let url;
+    let resultado;
     try {
-        // Um link novo a cada tentativa evita reaproveitar um checkout expirado.
-        url = await garantirLinkDePagamento(consulta, { novo: true });
+        resultado = await abrirSessao(consulta);
     } catch (erro) {
         if (erro instanceof ErroGateway) throw new AppError(erro.message, 502);
         throw erro;
     }
-    res.json({ url, teste: mercadoPago.modoTeste(), consulta });
+    if (resultado.jaPago) throw new AppError("Esta consulta já está paga", 409);
+    if (resultado.aguardando) {
+        throw new AppError("Seu pagamento já foi enviado e está aguardando confirmação (Pix ou boleto). Assim que cair, você recebe um aviso.", 409);
+    }
+    res.json({ clientSecret: resultado.sessao.client_secret, chavePublica: stripe.chavePublica(), teste: stripe.modoTeste() });
 };
 
-// Confere no Mercado Pago se o pagamento da consulta foi aprovado (usado na volta do checkout).
+// Confere no Stripe se o pagamento da consulta foi aprovado (usado ao terminar o pagamento no site).
 const verificarPagamento = async (req, res) => {
     const consulta = await buscar(req, req.params.id);
     if (!consulta.pagamento?.status) throw new AppError("Esta consulta não tem cobrança", 409);
     try {
-        await sincronizarComMercadoPago(consulta);
+        await sincronizarComStripe(consulta);
     } catch (erro) {
         if (erro instanceof ErroGateway) throw new AppError(erro.message, 502);
         throw erro;
