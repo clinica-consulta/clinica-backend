@@ -8,7 +8,8 @@ process.env.SENHA_PADRAO = "123456";
 const app = require("../src/app");
 const { conectarBanco, desconectarBanco } = require("../src/config/database");
 const { popularBanco } = require("../src/seed/popular");
-const { dataISO, diaDaSemana } = require("../src/utils/datas");
+const { dataISO, horaAtual, diaDaSemana } = require("../src/utils/datas");
+const Consulta = require("../src/models/Consulta");
 
 // Usa um banco separado para não apagar os dados de desenvolvimento.
 const URI = process.env.MONGODB_URI_TESTE || "mongodb://127.0.0.1:27017/gestao-consultas-teste";
@@ -16,6 +17,9 @@ const URI = process.env.MONGODB_URI_TESTE || "mongodb://127.0.0.1:27017/gestao-c
 const api = () => request(app);
 const tokens = {};
 const como = (perfil) => ({ Authorization: `Bearer ${tokens[perfil]}` });
+
+// Coloca a consulta no horário de atendimento (começou agora), quando o resultado pode ser registrado.
+const emAtendimento = (id) => Consulta.updateOne({ _id: id }, { data: dataISO(), hora: horaAtual() });
 
 // Próxima segunda-feira daqui a pelo menos 7 dias (fora dos dados de demonstração).
 const proximaSegunda = () => {
@@ -241,7 +245,10 @@ describe("agendamento", () => {
             .send({ paciente: particular.id, profissional: ana.id, data, hora: "13:00" });
         assert.equal(criada.status, 201, JSON.stringify(criada.body));
         assert.equal(criada.body.pagamento?.status ?? null, null, "sem cobrança ao agendar");
+        const antesDoHorario = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
+        assert.equal(antesDoHorario.status, 409, "resultado só a partir do horário");
 
+        await emAtendimento(criada.body.id);
         const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
         assert.equal(realizada.body.pagamento.status, "Pendente");
         const realizadaDeNovo = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
@@ -256,6 +263,7 @@ describe("agendamento", () => {
             .post("/api/consultas")
             .set(como("recepcao"))
             .send({ paciente: eu.body.paciente, profissional: ana.id, data, hora: "13:30" });
+        await emAtendimento(deConvenio.body.id);
         const semCobranca = await api().patch(`/api/consultas/${deConvenio.body.id}/status`).set(como("recepcao")).send({ status: "Realizada" });
         assert.equal(semCobranca.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
     });
@@ -314,6 +322,7 @@ describe("agendamento", () => {
                 .send({ paciente: particular.id, profissional: ana.id, data, hora: livres.body.horarios[0] });
             assert.equal(criada.status, 201, JSON.stringify(criada.body));
 
+            await emAtendimento(criada.body.id);
             const realizada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("profissional")).send({ status: "Realizada" });
             assert.equal(realizada.status, 200);
             assert.equal(realizada.body.pagamento.status, "Pendente");
@@ -395,6 +404,72 @@ describe("agendamento", () => {
         assert.equal(primeira.status, 200);
         const segunda = await api().post("/api/consultas/lembretes").set(como("recepcao"));
         assert.equal(segunda.body.enviados, 0);
+    });
+});
+
+describe("ciclo da consulta", () => {
+    // Agenda no primeiro horário livre da próxima segunda-feira.
+    const criarConsulta = async (paciente) => {
+        const profissionais = await api().get("/api/profissionais").set(como("recepcao"));
+        const ana = profissionais.body.find((item) => item.email === "profissional@demo.com");
+        const data = proximaSegunda();
+        const livres = await api().get(`/api/consultas/horarios?profissional=${ana.id}&data=${data}`).set(como("recepcao"));
+        const criada = await api().post("/api/consultas").set(como("recepcao")).send({ paciente, profissional: ana.id, data, hora: livres.body.horarios[0] });
+        assert.equal(criada.status, 201, JSON.stringify(criada.body));
+        return criada.body.id;
+    };
+    const pacientes = async () => (await api().get("/api/pacientes").set(como("recepcao"))).body;
+
+    it("no horário de atendimento só registra o resultado", async () => {
+        const particular = (await pacientes()).find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const id = await criarConsulta(particular.id);
+        await emAtendimento(id);
+        const confirmar = await api().patch(`/api/consultas/${id}/status`).set(como("recepcao")).send({ status: "Confirmada" });
+        assert.equal(confirmar.status, 409);
+        const remarcar = await api().patch(`/api/consultas/${id}/remarcar`).set(como("recepcao")).send({ data: proximaSegunda(), hora: "17:30" });
+        assert.equal(remarcar.status, 409);
+        const lembrete = await api().post(`/api/consultas/${id}/lembrete`).set(como("recepcao"));
+        assert.equal(lembrete.status, 409);
+
+        const ausencia = await api().patch(`/api/consultas/${id}/status`).set(como("recepcao")).send({ status: "Não compareceu" });
+        assert.equal(ausencia.status, 200);
+        const Notificacao = require("../src/models/Notificacao");
+        assert.ok(await Notificacao.exists({ consulta: id, acao: "remarcar" }), "convida o paciente a remarcar");
+    });
+
+    it("encerra sozinha 1 hora após o horário e trava a consulta", async () => {
+        const lista = await pacientes();
+        const particular = lista.find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const outro = lista.find((item) => item.id !== particular.id && item.status === "Ativo");
+        const confirmada = await criarConsulta(particular.id);
+        const semResposta = await criarConsulta(outro.id);
+        // Ontem, no mesmo horário: já passou bem mais de 1 hora.
+        await Consulta.updateOne({ _id: confirmada }, { data: dataISO(-1), status: "Confirmada", respostaConfirmacao: "Confirmou" });
+        await Consulta.updateOne({ _id: semResposta }, { data: dataISO(-1) });
+
+        const todas = await api().get("/api/consultas").set(como("recepcao"));
+        const realizada = todas.body.find((item) => item.id === confirmada);
+        const faltou = todas.body.find((item) => item.id === semResposta);
+        assert.equal(realizada.status, "Realizada");
+        assert.equal(realizada.pagamento.status, "Pendente", "particular recebe a cobrança");
+        assert.equal(faltou.status, "Não compareceu");
+        const Notificacao = require("../src/models/Notificacao");
+        assert.ok(await Notificacao.exists({ consulta: semResposta, acao: "remarcar" }));
+
+        for (const status of ["Confirmada", "Cancelada", "Realizada"]) {
+            const resposta = await api().patch(`/api/consultas/${semResposta}/status`).set(como("recepcao")).send({ status });
+            assert.equal(resposta.status, 409, `não aplica ${status} em consulta encerrada`);
+        }
+
+        const lembrete = await api().post(`/api/consultas/${confirmada}/pagamento/lembrete`).set(como("recepcao"));
+        assert.equal(lembrete.status, 200);
+        assert.ok(lembrete.body.pagamento.lembreteEm);
+        const deNovo = await api().post(`/api/consultas/${confirmada}/pagamento/lembrete`).set(como("recepcao"));
+        assert.equal(deNovo.status, 409, "no máximo um lembrete de pagamento a cada 24 horas");
+        const peloPaciente = await api().post(`/api/consultas/${confirmada}/pagamento/lembrete`).set(como("paciente"));
+        assert.equal(peloPaciente.status, 403);
+        const semCobranca = await api().post(`/api/consultas/${semResposta}/pagamento/lembrete`).set(como("recepcao"));
+        assert.equal(semCobranca.status, 409);
     });
 });
 
