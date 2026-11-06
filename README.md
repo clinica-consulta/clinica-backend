@@ -191,6 +191,10 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RN08 | O valor cobrado é definido no servidor; pagamento com valor inferior ao cobrado não é aceito. |
 | RN09 | Pacientes, profissionais e especialidades desativados mantêm o histórico e deixam de aceitar agendamentos. |
 | RN10 | Um profissional só pode ser excluído se não tiver consultas registradas. |
+| RN11 | Antes do horário marcado, a consulta pode ser confirmada, lembrada, remarcada ou cancelada. Do horário até 1 hora depois, só pode ser registrada como realizada ou como não comparecimento. |
+| RN12 | Sem resultado registrado, a consulta é encerrada automaticamente 1 hora após o horário: confirmada vira "Realizada" (com cobrança do particular); sem confirmação vira "Não compareceu". |
+| RN13 | Consulta encerrada não pode mais ser alterada; a única ação permitida é lembrar o pagamento pendente do particular, no máximo uma vez a cada 24 horas. |
+| RN14 | O paciente que não comparece recebe um aviso no portal e por e-mail convidando a agendar um novo horário. |
 
 ### 6.5 Ciclo de vida da consulta
 
@@ -204,10 +208,12 @@ stateDiagram-v2
     Agendada --> Cancelada
     Confirmada --> Cancelada
     Remarcada --> Cancelada
-    Confirmada --> Realizada: equipe registra
+    Confirmada --> Realizada: equipe registra ou 1 h após o horário
     Confirmada --> NaoCompareceu: equipe registra
-    Agendada --> Realizada
-    Agendada --> NaoCompareceu
+    Agendada --> Realizada: equipe registra
+    Agendada --> NaoCompareceu: equipe registra ou 1 h após o horário
+    Remarcada --> Realizada: equipe registra
+    Remarcada --> NaoCompareceu: equipe registra ou 1 h após o horário
     Realizada --> [*]
     Cancelada --> [*]
     NaoCompareceu --> [*]
