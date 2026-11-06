@@ -512,6 +512,24 @@ describe("ciclo da consulta", () => {
     });
 });
 
+describe("horários ocupados", () => {
+    it("o paciente vê os horários tomados por outros pacientes, sem dados deles", async () => {
+        const todas = await api().get("/api/consultas").set(como("recepcao"));
+        const eu = await api().get("/api/auth/me").set(como("paciente"));
+        const deOutro = todas.body.find((item) => item.paciente !== eu.body.paciente && item.status !== "Cancelada" && item.data >= dataISO());
+        assert.ok(deOutro, "precisa de uma consulta futura de outro paciente");
+
+        const resposta = await api().get("/api/consultas/ocupados").set(como("paciente"));
+        assert.equal(resposta.status, 200);
+        const achada = resposta.body.find((item) => item.id === deOutro.id);
+        assert.ok(achada, "o horário de outro paciente aparece como ocupado");
+        assert.deepEqual(Object.keys(achada).sort(), ["data", "hora", "id", "profissional"], "sem dados do paciente");
+
+        const semLogin = await api().get("/api/consultas/ocupados");
+        assert.equal(semLogin.status, 401);
+    });
+});
+
 describe("convênio e carteirinha", () => {
     const dadosBase = (sufixo) => ({
         nome: `Paciente Convênio ${sufixo}`,
