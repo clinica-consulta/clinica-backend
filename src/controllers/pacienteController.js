@@ -1,5 +1,8 @@
 const Paciente = require("../models/Paciente");
 const Usuario = require("../models/Usuario");
+const Consulta = require("../models/Consulta");
+const Notificacao = require("../models/Notificacao");
+const FilaEspera = require("../models/FilaEspera");
 const AppError = require("../utils/AppError");
 const { escolherCampos } = require("../utils/texto");
 
@@ -77,4 +80,27 @@ const alternarStatus = async (req, res) => {
     res.json(paciente);
 };
 
-module.exports = { listar, obter, criar, atualizar, alternarStatus };
+// Exclui o paciente de vez: cadastro, login, consultas, notificações e fila de espera.
+// Assim o mesmo CPF e e-mail podem ser cadastrados de novo. Pagamento já feito é registro financeiro:
+// com alguma consulta paga, a exclusão é recusada e o caminho é desativar o cadastro.
+const excluir = async (req, res) => {
+    const paciente = await buscar(req, req.params.id);
+    const pagas = await Consulta.countDocuments({ paciente: paciente._id, "pagamento.status": "Pago" });
+    if (pagas > 0) {
+        throw new AppError(
+            `Este paciente tem ${pagas} consulta(s) paga(s). Para manter o registro dos pagamentos, desative o cadastro em vez de excluir.`,
+            409
+        );
+    }
+
+    await Promise.all([
+        Consulta.deleteMany({ paciente: paciente._id }),
+        Notificacao.deleteMany({ paciente: paciente._id }),
+        FilaEspera.deleteMany({ paciente: paciente._id }),
+        Usuario.deleteMany({ $or: [{ paciente: paciente._id }, { email: paciente.email, tipo: "paciente" }] })
+    ]);
+    await paciente.deleteOne();
+    res.status(204).end();
+};
+
+module.exports = { listar, obter, criar, atualizar, alternarStatus, excluir };
