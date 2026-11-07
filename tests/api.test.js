@@ -530,6 +530,34 @@ describe("horários ocupados", () => {
     });
 });
 
+describe("exclusão de paciente", () => {
+    it("exclui cadastro, login e consultas, e libera o CPF e o e-mail", async () => {
+        const dados = { nome: "Paciente Para Excluir", cpf: "390.533.447-05", email: "excluir.paciente@email.com", telefone: "(11) 90000-1111", convenio: "Particular" };
+        const criado = await api().post("/api/pacientes").set(como("recepcao")).send(dados);
+        assert.equal(criado.status, 201, JSON.stringify(criado.body));
+        const login = await api().post("/api/auth/login").send({ email: dados.email, senha: "123456" });
+        assert.equal(login.status, 200, "o paciente tem acesso");
+
+        const pelaPaciente = await api().delete(`/api/pacientes/${criado.body.id}`).set(como("paciente"));
+        assert.equal(pelaPaciente.status, 403);
+        const excluido = await api().delete(`/api/pacientes/${criado.body.id}`).set(como("recepcao"));
+        assert.equal(excluido.status, 204);
+
+        const semAcesso = await api().post("/api/auth/login").send({ email: dados.email, senha: "123456" });
+        assert.equal(semAcesso.status, 401, "o login some junto");
+        const deNovo = await api().post("/api/pacientes").set(como("recepcao")).send(dados);
+        assert.equal(deNovo.status, 201, "o mesmo CPF e e-mail podem ser cadastrados de novo");
+    });
+
+    it("não exclui paciente com consulta paga", async () => {
+        const pagas = await Consulta.findOne({ "pagamento.status": "Pago" });
+        assert.ok(pagas, "precisa de uma consulta paga nos testes anteriores");
+        const resposta = await api().delete(`/api/pacientes/${pagas.paciente}`).set(como("recepcao"));
+        assert.equal(resposta.status, 409);
+        assert.match(resposta.body.mensagem, /desative/);
+    });
+});
+
 describe("convênio e carteirinha", () => {
     const dadosBase = (sufixo) => ({
         nome: `Paciente Convênio ${sufixo}`,
