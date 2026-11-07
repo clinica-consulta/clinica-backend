@@ -450,6 +450,7 @@ O projeto resultou em uma API funcional e publicada, integrada à interface web 
 
 | Versão | Entregas |
 |---|---|
+| [1.12.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.12.0) | Exclusão de paciente com login, consultas e notificações |
 | [1.11.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.11.1) | Horários já marcados aparecem ocupados para todos os perfis |
 | [1.11.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.11.0) | E-mails completos da consulta e confirmação do paciente só depois do pedido da recepção |
 | [1.10.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.10.0) | Confirmação só pelo paciente, resultado registrado pela recepção a qualquer momento e carteirinha do convênio |

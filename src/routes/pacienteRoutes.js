@@ -11,5 +11,6 @@ rotas.get("/:id", controller.obter);
 rotas.post("/", permitir(...EQUIPE), controller.criar);
 rotas.put("/:id", permitir(...EQUIPE, "paciente"), controller.atualizar);
 rotas.patch("/:id/status", permitir(...EQUIPE), controller.alternarStatus);
+rotas.delete("/:id", permitir(...EQUIPE), controller.excluir);
 
 module.exports = rotas;
