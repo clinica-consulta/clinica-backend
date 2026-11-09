@@ -80,22 +80,15 @@ const alternarStatus = async (req, res) => {
     res.json(paciente);
 };
 
-// Exclui o paciente de vez: cadastro, login, consultas, notificações e fila de espera.
-// Assim o mesmo CPF e e-mail podem ser cadastrados de novo. Pagamento já feito é registro financeiro:
-// com alguma consulta paga, a exclusão é recusada e o caminho é desativar o cadastro.
+// Exclui o paciente de vez, sem exceção: cadastro, login, todas as consultas (inclusive as pagas),
+// notificações e fila de espera. Assim o mesmo CPF e e-mail podem ser cadastrados de novo.
 const excluir = async (req, res) => {
     const paciente = await buscar(req, req.params.id);
-    const pagas = await Consulta.countDocuments({ paciente: paciente._id, "pagamento.status": "Pago" });
-    if (pagas > 0) {
-        throw new AppError(
-            `Este paciente tem ${pagas} consulta(s) paga(s). Para manter o registro dos pagamentos, desative o cadastro em vez de excluir.`,
-            409
-        );
-    }
+    const consultas = await Consulta.find({ paciente: paciente._id }).select("_id");
 
     await Promise.all([
         Consulta.deleteMany({ paciente: paciente._id }),
-        Notificacao.deleteMany({ paciente: paciente._id }),
+        Notificacao.deleteMany({ $or: [{ paciente: paciente._id }, { consulta: { $in: consultas.map((item) => item._id) } }] }),
         FilaEspera.deleteMany({ paciente: paciente._id }),
         Usuario.deleteMany({ $or: [{ paciente: paciente._id }, { email: paciente.email, tipo: "paciente" }] })
     ]);

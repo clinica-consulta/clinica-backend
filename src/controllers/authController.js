@@ -4,7 +4,7 @@ const Paciente = require("../models/Paciente");
 const Profissional = require("../models/Profissional");
 const AppError = require("../utils/AppError");
 const { gerarToken } = require("../middlewares/auth");
-const { enviarEmail } = require("../services/emailService");
+const { enviarEmailModelo, dadosDaClinica } = require("../services/emailConsultaService");
 const { cpfValido, formatarCpf } = require("../utils/cpf");
 
 const respostaDeSessao = (usuario) => ({ token: gerarToken(usuario), usuario });
@@ -114,13 +114,15 @@ const recuperarSenha = async (req, res) => {
     usuario.tentativasRedefinicao = 0;
     await usuario.save();
 
-    const enviado = await enviarEmail({
+    const enviado = await enviarEmailModelo({
         para: email,
         assunto: "Código para redefinir sua senha",
-        texto: `Olá, ${usuario.nome}!\n\nSeu código para redefinir a senha é: ${codigo}\nEle vale por 15 minutos.\n\nSe não foi você, ignore este e-mail.`
-    }).catch((erro) => {
-        console.error("Falha ao enviar e-mail:", erro.message);
-        return false;
+        titulo: "Redefinição de senha",
+        nome: usuario.nome,
+        mensagem: "Use o código abaixo para criar uma nova senha. Ele vale por 15 minutos.",
+        destaque: codigo,
+        observacao: "Se não foi você que pediu, ignore este e-mail: sua senha continua a mesma.",
+        clinica: await dadosDaClinica()
     });
 
     if (enviado) return res.json({ mensagem: `Enviamos um código para ${email}.` });

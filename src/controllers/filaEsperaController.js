@@ -1,56 +1,56 @@
 const FilaEspera = require("../models/FilaEspera");
-const Paciente = require("../models/Paciente");
 const AppError = require("../utils/AppError");
-const { dataISO } = require("../utils/datas");
-const { escolherCampos } = require("../utils/texto");
-const { notificar } = require("../services/notificacaoService");
+const { entrarNaFila, aceitarOferta, sairDaFila, posicaoNaFila } = require("../services/filaEsperaService");
 
-const buscar = async (id) => {
+const ehEquipe = (usuario) => ["recepcionista", "administrador"].includes(usuario.tipo);
+
+// A equipe vê e mexe em todas as entradas; o paciente, só nas dele.
+const buscar = async (req, id) => {
     const entrada = await FilaEspera.findById(id);
-    if (!entrada) throw new AppError("Paciente não encontrado na fila de espera", 404);
+    if (!entrada) throw new AppError("Entrada da lista de espera não encontrada", 404);
+    if (!ehEquipe(req.usuario) && String(entrada.paciente) !== String(req.usuario.paciente)) {
+        throw new AppError("Entrada da lista de espera não encontrada", 404);
+    }
     return entrada;
 };
 
-// Prioridade alta primeiro, depois ordem de chegada.
+const comPosicao = async (entrada) => ({ ...entrada.toJSON(), posicao: await posicaoNaFila(entrada) });
+
 const listar = async (req, res) => {
-    const filtro = {};
-    if (req.query.especialidade) filtro.especialidade = req.query.especialidade;
+    const filtro = ehEquipe(req.usuario) ? {} : { paciente: req.usuario.paciente };
     if (req.query.status) filtro.status = req.query.status;
-    const fila = await FilaEspera.find(filtro).sort({ entradaEm: 1, createdAt: 1 });
-    res.json(fila.sort((a, b) => (a.prioridade === b.prioridade ? 0 : a.prioridade === "Alta" ? -1 : 1)));
+    const fila = await FilaEspera.find(filtro).sort({ data: 1, hora: 1, createdAt: 1 });
+    res.json(await Promise.all(fila.map(comPosicao)));
 };
 
+// POST /fila-espera { profissional, data, hora, alternativa?: { profissional, data, hora }, consultaAlternativa?, paciente? (equipe) }
 const adicionar = async (req, res) => {
-    const dados = escolherCampos(req.body, ["paciente", "especialidade", "preferencia", "prioridade"]);
-    if (!dados.paciente || !(await Paciente.exists({ _id: dados.paciente }))) {
-        throw new AppError("Paciente não encontrado", 404);
-    }
-    if (await FilaEspera.exists({ paciente: dados.paciente, especialidade: dados.especialidade })) {
-        throw new AppError("Este paciente já está na fila para esta especialidade", 409);
-    }
-    res.status(201).json(await FilaEspera.create({ ...dados, entradaEm: dataISO() }));
-};
-
-// Oferece um horário liberado ao paciente da fila.
-const convidar = async (req, res) => {
-    const entrada = await buscar(req.params.id);
-    entrada.status = "Convidado";
-    await entrada.save();
-
-    await notificar({
-        titulo: "Horário oferecido",
-        texto: `Surgiu um horário em ${entrada.especialidade}. Entre em contato com a recepção para confirmar.`,
-        publico: ["paciente", "recepcionista"],
-        paciente: entrada.paciente
+    const { profissional, data, hora, alternativa, consultaAlternativa } = req.body ?? {};
+    const equipe = ehEquipe(req.usuario);
+    const resultado = await entrarNaFila({
+        pacienteId: equipe ? req.body?.paciente : req.usuario.paciente,
+        profissionalId: profissional,
+        data,
+        hora,
+        alternativa,
+        consultaAlternativaId: consultaAlternativa,
+        // A recepção pode pôr na lista quem já tem outra consulta combinada por telefone.
+        exigirAlternativa: !equipe,
+        canal: equipe ? "Recepção" : "Paciente"
     });
-
-    res.json(entrada);
+    res.status(201).json({ ...(await comPosicao(resultado.entrada)), consultaAlternativaCriada: resultado.consultaAlternativa ?? null });
 };
 
+const aceitar = async (req, res) => {
+    const entrada = await buscar(req, req.params.id);
+    res.json(await aceitarOferta(entrada));
+};
+
+// Recusar a vaga oferecida ou sair da lista: a vaga (se houver) passa para o próximo.
 const remover = async (req, res) => {
-    const entrada = await buscar(req.params.id);
-    await entrada.deleteOne();
-    res.json({ mensagem: "Paciente removido da fila de espera" });
+    const entrada = await buscar(req, req.params.id);
+    await sairDaFila(entrada);
+    res.json({ mensagem: "Saiu da lista de espera" });
 };
 
-module.exports = { listar, adicionar, convidar, remover };
+module.exports = { listar, adicionar, aceitar, remover };

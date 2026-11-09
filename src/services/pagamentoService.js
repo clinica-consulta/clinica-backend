@@ -2,7 +2,7 @@ const Paciente = require("../models/Paciente");
 const Configuracao = require("../models/Configuracao");
 const { dataISO, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("./notificacaoService");
-const { enviarEmail } = require("./emailService");
+const { enviarEmailDaConsulta } = require("./emailConsultaService");
 const stripe = require("./stripeService");
 
 const formatarValor = (valor) => Number(valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -22,19 +22,13 @@ const avisarCobranca = async (consulta) => {
         acao: "pagamento"
     });
 
-    const paciente = await Paciente.findById(consulta.paciente);
-    if (!paciente?.email) return;
-    const portal = urlDoSite() ? `${urlDoSite()}/paciente` : "";
-    await enviarEmail({
-        para: paciente.email,
-        assunto: `Pagamento da consulta #${consulta.codigo} disponível`,
-        texto:
-            `Olá, ${paciente.nome}!\n\n` +
-            `Sua consulta de ${consulta.especialidade} em ${quando} foi concluída.\n` +
-            `O pagamento de ${valor} já está disponível.\n\n` +
-            (portal ? `Pague com Pix ou cartão no portal do paciente:\n${portal}\n\n` : "Acesse o portal do paciente para pagar.\n\n") +
-            "Se você já pagou, desconsidere esta mensagem."
-    }).catch((erro) => console.error("Falha ao enviar e-mail de cobrança:", erro.message));
+    await enviarEmailDaConsulta(consulta, {
+        assunto: "Pagamento da consulta disponível",
+        mensagem: `Sua consulta foi concluída. O pagamento de ${valor} já está disponível: pague com Pix ou cartão pelo portal do paciente.`,
+        botao: "Pagar consulta",
+        extras: [{ rotulo: "Valor", valor }],
+        observacao: "Se você já pagou, desconsidere esta mensagem."
+    });
 };
 
 // Marca a consulta como paga e avisa paciente e recepção. Não faz nada se já estiver paga.
@@ -144,18 +138,13 @@ const lembrarPagamento = async (consulta) => {
         acao: "pagamento"
     });
 
-    const paciente = await Paciente.findById(consulta.paciente);
-    if (!paciente?.email) return;
-    const portal = urlDoSite() ? `${urlDoSite()}/paciente` : "";
-    await enviarEmail({
-        para: paciente.email,
-        assunto: `Lembrete: pagamento da consulta #${consulta.codigo}`,
-        texto:
-            `Olá, ${paciente.nome}!\n\n` +
-            `O pagamento de ${valor} da sua consulta de ${consulta.especialidade} em ${quando} ainda está pendente.\n\n` +
-            (portal ? `Pague com Pix ou cartão no portal do paciente:\n${portal}\n\n` : "Acesse o portal do paciente para pagar.\n\n") +
-            "Se você já pagou, desconsidere esta mensagem."
-    }).catch((erro) => console.error("Falha ao enviar e-mail de lembrete de pagamento:", erro.message));
+    await enviarEmailDaConsulta(consulta, {
+        assunto: "Lembrete de pagamento",
+        mensagem: `O pagamento de ${valor} desta consulta ainda está pendente. Pague com Pix ou cartão pelo portal do paciente.`,
+        botao: "Pagar consulta",
+        extras: [{ rotulo: "Valor", valor }],
+        observacao: "Se você já pagou, desconsidere esta mensagem."
+    });
 };
 
 module.exports = { formatarValor, urlDoSite, avisarCobranca, lembrarPagamento, confirmarPagamento, sincronizarComStripe, abrirSessao };

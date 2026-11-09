@@ -2,6 +2,8 @@ const Profissional = require("../models/Profissional");
 const Usuario = require("../models/Usuario");
 const Consulta = require("../models/Consulta");
 const Bloqueio = require("../models/Bloqueio");
+const Notificacao = require("../models/Notificacao");
+const FilaEspera = require("../models/FilaEspera");
 const AppError = require("../utils/AppError");
 const { escolherCampos } = require("../utils/texto");
 
@@ -91,19 +93,19 @@ const definirDisponibilidade = async (req, res) => {
     res.json(profissional);
 };
 
-// Exclui o médico, o acesso dele e os bloqueios. Com consultas registradas, a exclusão é recusada para não perder o histórico.
+// Exclui o médico de vez, sem exceção: acesso, bloqueios, todas as consultas dele (inclusive as pagas),
+// notificações ligadas a elas e as listas de espera dos horários dele.
 const excluir = async (req, res) => {
     const profissional = await buscar(req.params.id);
-    const consultas = await Consulta.countDocuments({ profissional: profissional._id });
-    if (consultas > 0) {
-        throw new AppError(
-            `Este médico tem ${consultas} consulta(s) registrada(s). Para manter o histórico dos pacientes, desative o médico em vez de excluir.`,
-            409
-        );
-    }
+    const consultas = await Consulta.find({ profissional: profissional._id }).select("_id");
 
-    await Bloqueio.deleteMany({ profissional: profissional._id });
-    await Usuario.deleteOne({ profissional: profissional._id });
+    await Promise.all([
+        Consulta.deleteMany({ profissional: profissional._id }),
+        Notificacao.deleteMany({ $or: [{ profissional: profissional._id }, { consulta: { $in: consultas.map((item) => item._id) } }] }),
+        FilaEspera.deleteMany({ profissional: profissional._id }),
+        Bloqueio.deleteMany({ profissional: profissional._id }),
+        Usuario.deleteOne({ profissional: profissional._id })
+    ]);
     await profissional.deleteOne();
     res.status(204).end();
 };

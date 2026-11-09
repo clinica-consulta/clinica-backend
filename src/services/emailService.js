@@ -7,7 +7,8 @@ const nodemailer = require("nodemailer");
 const brevoConfigurado = () => Boolean(process.env.BREVO_API_KEY && process.env.EMAIL_REMETENTE);
 const smtpConfigurado = () => brevoConfigurado() || Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
-const enviarPeloBrevo = async ({ para, assunto, texto }) => {
+// `html` é opcional: com ele, o e-mail sai formatado e o `texto` fica como alternativa para leitores simples.
+const enviarPeloBrevo = async ({ para, assunto, texto, html }) => {
     const resposta = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: { "api-key": process.env.BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
@@ -15,7 +16,8 @@ const enviarPeloBrevo = async ({ para, assunto, texto }) => {
             sender: { name: process.env.EMAIL_NOME || "Clínica Senai", email: process.env.EMAIL_REMETENTE },
             to: [{ email: para }],
             subject: assunto,
-            textContent: texto
+            textContent: texto,
+            ...(html && { htmlContent: html })
         }),
         // Sem resposta em 10 s, desiste e mostra o código na tela.
         signal: AbortSignal.timeout(10000)
@@ -23,7 +25,7 @@ const enviarPeloBrevo = async ({ para, assunto, texto }) => {
     if (!resposta.ok) throw new Error(`Brevo respondeu ${resposta.status}: ${(await resposta.text()).slice(0, 200)}`);
 };
 
-const enviarPorSmtp = async ({ para, assunto, texto }) => {
+const enviarPorSmtp = async ({ para, assunto, texto, html }) => {
     const porta = Number(process.env.SMTP_PORT || 587);
     const transporte = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
@@ -35,7 +37,7 @@ const enviarPorSmtp = async ({ para, assunto, texto }) => {
         greetingTimeout: 10000,
         socketTimeout: 15000
     });
-    await transporte.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: para, subject: assunto, text: texto });
+    await transporte.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: para, subject: assunto, text: texto, ...(html && { html }) });
 };
 
 const enviarEmail = async (mensagem) => {
