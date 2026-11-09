@@ -126,8 +126,11 @@ describe("permissões por perfil", () => {
         assert.ok(resposta.body.every((consulta) => consulta.paciente === eu.body.paciente));
     });
 
-    it("paciente não acessa a fila de espera nem cria especialidade", async () => {
-        assert.equal((await api().get("/api/fila-espera").set(como("paciente"))).status, 403);
+    it("paciente vê só a própria fila de espera e não cria especialidade", async () => {
+        const fila = await api().get("/api/fila-espera").set(como("paciente"));
+        assert.equal(fila.status, 200);
+        const eu = await api().get("/api/auth/me").set(como("paciente"));
+        assert.ok(fila.body.every((item) => item.paciente === eu.body.paciente));
         assert.equal((await api().post("/api/especialidades").set(como("paciente")).send({ nome: "X" })).status, 403);
     });
 
@@ -523,7 +526,7 @@ describe("horários ocupados", () => {
         assert.equal(resposta.status, 200);
         const achada = resposta.body.find((item) => item.id === deOutro.id);
         assert.ok(achada, "o horário de outro paciente aparece como ocupado");
-        assert.deepEqual(Object.keys(achada).sort(), ["data", "hora", "id", "profissional"], "sem dados do paciente");
+        assert.deepEqual(Object.keys(achada).sort(), ["data", "fila", "hora", "id", "profissional"], "sem dados do paciente");
 
         const semLogin = await api().get("/api/consultas/ocupados");
         assert.equal(semLogin.status, 401);
@@ -549,12 +552,135 @@ describe("exclusão de paciente", () => {
         assert.equal(deNovo.status, 201, "o mesmo CPF e e-mail podem ser cadastrados de novo");
     });
 
-    it("não exclui paciente com consulta paga", async () => {
-        const pagas = await Consulta.findOne({ "pagamento.status": "Pago" });
-        assert.ok(pagas, "precisa de uma consulta paga nos testes anteriores");
-        const resposta = await api().delete(`/api/pacientes/${pagas.paciente}`).set(como("recepcao"));
+    it("exclui paciente mesmo com consulta paga", async () => {
+        const dados = { nome: "Paciente Com Pagamento", cpf: "714.602.380-01", email: "com.pagamento@email.com", telefone: "(11) 90000-2222", convenio: "Particular" };
+        const criado = await api().post("/api/pacientes").set(como("recepcao")).send(dados);
+        assert.equal(criado.status, 201, JSON.stringify(criado.body));
+        const outra = await Consulta.findOne({ "pagamento.status": "Pago" }).lean();
+        assert.ok(outra, "precisa de uma consulta paga nos testes anteriores");
+        const { _id, codigo, ...copia } = outra;
+        await Consulta.create({ ...copia, codigo: `T${Date.now()}`, paciente: criado.body.id, data: "2020-01-01" });
+
+        const resposta = await api().delete(`/api/pacientes/${criado.body.id}`).set(como("recepcao"));
+        assert.equal(resposta.status, 204);
+        assert.equal(await Consulta.countDocuments({ paciente: criado.body.id }), 0);
+    });
+});
+
+describe("lista de espera por horário", () => {
+    const FilaEspera = require("../src/models/FilaEspera");
+    let medico;
+    let data;
+    let desejado;
+    let ocupante;
+    const pacientes = [];
+
+    // CPF válido gerado a partir de um número (para criar pacientes de teste).
+    const cpfValidoDe = (n) => {
+        const base = String(31415926 + n * 7919).padStart(9, "0").slice(0, 9).split("").map(Number);
+        const digito = (numeros) => { const resto = (numeros.reduce((soma, d, i) => soma + d * (numeros.length + 1 - i), 0) * 10) % 11; return resto === 10 ? 0 : resto; };
+        const d1 = digito(base);
+        const d2 = digito([...base, d1]);
+        const c = [...base, d1, d2].join("");
+        return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`;
+    };
+
+    // Pacientes particulares novos, cada um com o próprio login.
+    const novoPaciente = async (n) => {
+        const criado = await api().post("/api/pacientes").set(como("recepcao")).send({ nome: `Fila ${n}`, cpf: cpfValidoDe(n), email: `fila${n}@email.com`, telefone: "(11) 90000-3333", convenio: "Particular" });
+        assert.equal(criado.status, 201, JSON.stringify(criado.body));
+        const login = await api().post("/api/auth/login").send({ email: `fila${n}@email.com`, senha: "123456" });
+        return { id: criado.body.id, token: login.body.token };
+    };
+    const comoPaciente = (p) => ({ Authorization: `Bearer ${p.token}` });
+
+    before(async () => {
+        const profissionais = await api().get("/api/profissionais").set(como("recepcao"));
+        medico = profissionais.body.find((item) => item.email === "profissional@demo.com");
+        // Uma terça-feira daqui a pelo menos 14 dias (o médico atende o dia inteiro).
+        for (let dias = 14; ; dias += 1) if (diaDaSemana(dataISO(dias)) === 2) { data = dataISO(dias); break; }
+        const livres = await api().get(`/api/consultas/horarios?profissional=${medico.id}&data=${data}`).set(como("recepcao"));
+        assert.ok(livres.body.horarios.length >= 8, "precisa de horários livres");
+        desejado = livres.body.horarios[0];
+        for (let n = 0; n < 7; n += 1) pacientes.push(await novoPaciente(n));
+        const marcada = await api().post("/api/consultas").set(comoPaciente(pacientes[0])).send({ profissional: medico.id, data, hora: desejado });
+        assert.equal(marcada.status, 201, JSON.stringify(marcada.body));
+        ocupante = marcada.body;
+    });
+
+    it("entra na fila de um horário ocupado, com horário alternativo, até 5 pessoas", async () => {
+        const livres = await api().get(`/api/consultas/horarios?profissional=${medico.id}&data=${data}`).set(como("recepcao"));
+        const semAlternativa = await api().post("/api/fila-espera").set(comoPaciente(pacientes[1])).send({ profissional: medico.id, data, hora: desejado });
+        assert.equal(semAlternativa.status, 422, "o paciente precisa escolher um horário alternativo");
+
+        for (let n = 1; n <= 5; n += 1) {
+            const entrada = await api().post("/api/fila-espera").set(comoPaciente(pacientes[n])).send({ profissional: medico.id, data, hora: desejado, alternativa: { profissional: medico.id, data, hora: livres.body.horarios[n] } });
+            assert.equal(entrada.status, 201, JSON.stringify(entrada.body));
+            assert.equal(entrada.body.posicao, n);
+            assert.ok(entrada.body.consultaAlternativaCriada, "a consulta alternativa fica marcada");
+        }
+        const sexto = await api().post("/api/fila-espera").set(comoPaciente(pacientes[6])).send({ profissional: medico.id, data, hora: desejado, alternativa: { profissional: medico.id, data, hora: livres.body.horarios[6] } });
+        assert.equal(sexto.status, 409, "no máximo 5 na lista");
+
+        const ocupados = await api().get("/api/consultas/ocupados").set(comoPaciente(pacientes[6]));
+        const horario = ocupados.body.find((item) => item.profissional === medico.id && item.data === data && item.hora === desejado);
+        assert.equal(horario.fila, 5, "o site mostra quantos estão na lista");
+    });
+
+    it("quando o horário vaga, o primeiro recebe a oferta e o horário fica reservado para ele", async () => {
+        const cancelada = await api().patch(`/api/consultas/${ocupante.id}/status`).set(comoPaciente(pacientes[0])).send({ status: "Cancelada" });
+        assert.equal(cancelada.status, 200);
+        const primeiro = await FilaEspera.findOne({ paciente: pacientes[1].id });
+        assert.equal(primeiro.status, "Oferecido");
+        const Notificacao = require("../src/models/Notificacao");
+        assert.ok(await Notificacao.exists({ fila: primeiro._id, acao: "fila" }));
+
+        const paraOutro = await api().get(`/api/consultas/horarios?profissional=${medico.id}&data=${data}`).set(comoPaciente(pacientes[6]));
+        assert.ok(!paraOutro.body.horarios.includes(desejado), "reservado para quem recebeu a oferta");
+        const outroTenta = await api().post("/api/consultas").set(comoPaciente(pacientes[6])).send({ profissional: medico.id, data, hora: desejado });
+        assert.equal(outroTenta.status, 409);
+    });
+
+    it("recusar passa a vaga para o próximo; aceitar troca a consulta alternativa", async () => {
+        const primeiro = await FilaEspera.findOne({ paciente: pacientes[1].id });
+        const recusa = await api().delete(`/api/fila-espera/${primeiro._id}`).set(comoPaciente(pacientes[1]));
+        assert.equal(recusa.status, 200);
+        const segundo = await FilaEspera.findOne({ paciente: pacientes[2].id });
+        assert.equal(segundo.status, "Oferecido", "a vaga passou para o próximo");
+
+        const deOutro = await api().post(`/api/fila-espera/${segundo._id}/aceitar`).set(comoPaciente(pacientes[3]));
+        assert.equal(deOutro.status, 404, "ninguém aceita a vaga de outra pessoa");
+        const alternativaAntes = await Consulta.findById(segundo.consultaAlternativa);
+        const aceito = await api().post(`/api/fila-espera/${segundo._id}/aceitar`).set(comoPaciente(pacientes[2]));
+        assert.equal(aceito.status, 200, JSON.stringify(aceito.body));
+        assert.equal(aceito.body.hora, desejado);
+        assert.equal(aceito.body.id, String(alternativaAntes._id), "a própria consulta alternativa muda de horário");
+        assert.equal(await FilaEspera.countDocuments({ paciente: pacientes[2].id }), 0, "sai da lista");
+    });
+
+    it("quem não está na vez não pode aceitar", async () => {
+        const terceiro = await FilaEspera.findOne({ paciente: pacientes[3].id });
+        const resposta = await api().post(`/api/fila-espera/${terceiro._id}/aceitar`).set(comoPaciente(pacientes[3]));
         assert.equal(resposta.status, 409);
-        assert.match(resposta.body.mensagem, /desative/);
+    });
+});
+
+describe("aviso do dia da consulta", () => {
+    it("avisa uma vez quando falta a antecedência configurada, e não avisa consulta criada dentro do prazo", async () => {
+        const { enviarAvisosDoDia } = require("../src/services/cicloConsultaService");
+        const Notificacao = require("../src/models/Notificacao");
+        await api().put("/api/configuracoes").set(como("recepcao")).send({ antecedenciaLembreteHoras: 48 });
+
+        const base = await Consulta.findOne({ status: { $in: ["Agendada", "Confirmada", "Remarcada"] } }).lean();
+        const { _id, ...copia } = base;
+        const antiga = await Consulta.create({ ...copia, codigo: `AV${Date.now()}`, data: dataISO(1), hora: "10:00", avisoDoDiaEm: null, createdAt: new Date(Date.now() - 5 * 86400000) });
+        const recente = await Consulta.create({ ...copia, codigo: `AN${Date.now()}`, data: dataISO(1), hora: "11:00", avisoDoDiaEm: null });
+
+        await enviarAvisosDoDia();
+        await enviarAvisosDoDia();
+        assert.equal(await Notificacao.countDocuments({ consulta: antiga._id, titulo: /consulta (é hoje|está chegando)/ }), 1, "um aviso só");
+        assert.equal(await Notificacao.countDocuments({ consulta: recente._id, titulo: /consulta (é hoje|está chegando)/ }), 0, "criada dentro do prazo não recebe");
+        await api().put("/api/configuracoes").set(como("recepcao")).send({ antecedenciaLembreteHoras: 24 });
     });
 });
 
@@ -632,12 +758,21 @@ describe("cadastros da administração", () => {
         assert.equal(login.status, 401);
     });
 
-    it("não exclui médico com consultas registradas", async () => {
-        const profissionais = await api().get("/api/profissionais").set(como("admin"));
-        const comConsultas = profissionais.body.find((item) => item.email === "profissional@demo.com");
-        const resposta = await api().delete(`/api/profissionais/${comConsultas.id}`).set(como("admin"));
-        assert.equal(resposta.status, 409);
-        assert.match(resposta.body.mensagem, /desative/);
+    it("exclui médico com consultas, junto com as consultas", async () => {
+        const criado = await api().post("/api/profissionais").set(como("admin")).send({ nome: "Dr. Com Consultas", especialidade: "Clínica geral", crm: "CRM 9", email: "com.consultas@clinica.com" });
+        assert.equal(criado.status, 201);
+        const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
+        const particular = pacientes.body.find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const data = proximaSegunda();
+        const livres = await api().get(`/api/consultas/horarios?profissional=${criado.body.id}&data=${data}`).set(como("recepcao"));
+        const consulta = await api().post("/api/consultas").set(como("recepcao")).send({ paciente: particular.id, profissional: criado.body.id, data, hora: livres.body.horarios[0] });
+        assert.equal(consulta.status, 201, JSON.stringify(consulta.body));
+
+        const pelaRecepcao = await api().delete(`/api/profissionais/${criado.body.id}`).set(como("recepcao"));
+        assert.equal(pelaRecepcao.status, 403, "só a administração exclui médico");
+        const resposta = await api().delete(`/api/profissionais/${criado.body.id}`).set(como("admin"));
+        assert.equal(resposta.status, 204);
+        assert.equal(await Consulta.countDocuments({ _id: consulta.body.id }), 0, "a consulta sai junto");
     });
 
     it("desativar paciente bloqueia o login dele", async () => {

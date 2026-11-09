@@ -23,6 +23,9 @@ const somarMinutos = (data, hora, minutos) => {
 
 // Datas e horas no fuso da clínica, no formato AAAA-MM-DDTHH:MM (comparáveis como texto).
 const agora = () => `${dataISO()}T${horaAtual()}`;
+// Um instante (Date) no formato AAAA-MM-DDTHH:MM do fuso da clínica.
+const noFusoDaClinica = (instante) =>
+    new Intl.DateTimeFormat("sv-SE", { timeZone: process.env.TZ_CLINICA || "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(instante)).replace(" ", "T");
 const inicioDe = (consulta) => `${consulta.data}T${consulta.hora}`;
 const fimDaJanela = (consulta) => somarMinutos(consulta.data, consulta.hora, JANELA_MINUTOS);
 
@@ -52,7 +55,7 @@ const avisarAusencia = async (consulta) => {
     await enviarEmailDaConsulta(consulta, {
         assunto: "Vamos agendar um novo horário?",
         mensagem: "Notamos que você não compareceu a esta consulta. Se quiser, é só escolher um novo dia e horário.",
-        chamada: "Agende um novo horário pelo portal do paciente:",
+        botao: "Agendar novo horário",
         caminho: "/paciente/agendar",
         observacao: "Se tiver qualquer dúvida, fale com a recepção da clínica."
     });
@@ -73,7 +76,8 @@ const pedirConfirmacao = async (consulta) => {
     await enviarEmailDaConsulta(consulta, {
         assunto: "Confirme sua consulta",
         mensagem: "A clínica pede que você confirme sua presença nesta consulta. Ela só fica confirmada depois da sua resposta.",
-        chamada: "Confirme sua presença (ou cancele, se não puder ir) no portal do paciente:"
+        botao: "Confirmar presença",
+        observacao: "Se não puder ir, cancele pelo portal para liberar o horário para outro paciente."
     });
 };
 
@@ -129,8 +133,51 @@ const encerrarVencidas = async () => {
 };
 
 // Roda o encerramento de minuto em minuto enquanto a API estiver no ar.
+// Avisa o paciente (portal e e-mail) quando faltam as horas da "Antecedência do lembrete".
+// Uma vez por consulta; consulta marcada já dentro desse prazo não recebe (o e-mail de "Consulta marcada" acabou de chegar).
+const enviarAvisosDoDia = async () => {
+    const { antecedenciaLembreteHoras: horas = 24 } = await Configuracao.obter();
+    const atual = agora();
+    const ate = dataISO(Math.ceil(horas / 24) + 1);
+    const candidatas = await Consulta.find({ status: { $in: STATUS_ABERTOS }, avisoDoDiaEm: null, data: { $gte: dataISO(), $lte: ate } });
+    let enviados = 0;
+
+    for (const candidata of candidatas) {
+        const aPartirDe = somarMinutos(candidata.data, candidata.hora, -horas * 60);
+        if (atual < aPartirDe || atual >= inicioDe(candidata)) continue;
+        // Criada depois que o prazo do aviso já tinha começado: o e-mail de "Consulta marcada" basta.
+        const criadaNoPrazo = noFusoDaClinica(candidata.createdAt) >= aPartirDe;
+
+        const marcada = await Consulta.findOneAndUpdate({ _id: candidata._id, avisoDoDiaEm: null }, { $set: { avisoDoDiaEm: new Date() } }, { returnDocument: "after" });
+        if (!marcada || criadaNoPrazo) continue;
+
+        const hoje = marcada.data === dataISO();
+        const quando = hoje ? `hoje às ${marcada.hora}` : `${formatarDataBR(marcada.data)} às ${marcada.hora}`;
+        await notificar({
+            titulo: hoje ? "Sua consulta é hoje" : "Sua consulta está chegando",
+            texto: `Sua consulta de ${marcada.especialidade} é ${quando}. Chegue com 15 minutos de antecedência.`,
+            publico: ["paciente"],
+            paciente: marcada.paciente,
+            consulta: marcada._id
+        });
+        await enviarEmailDaConsulta(marcada, {
+            assunto: hoje ? "Sua consulta é hoje" : "Sua consulta está chegando",
+            mensagem: `Lembrete: sua consulta é ${quando}. Chegue com 15 minutos de antecedência e leve um documento com foto${marcada.status === "Confirmada" ? "" : " e, se ainda não confirmou, confirme sua presença pelo portal"}.`,
+            botao: "Ver minha consulta",
+            observacao: "Se não puder ir, cancele pelo portal para liberar o horário para outro paciente."
+        });
+        enviados += 1;
+    }
+    return enviados;
+};
+
 const iniciarEncerramentoAutomatico = () => {
-    const rodar = () => encerrarVencidas().catch((erro) => console.error("Falha ao encerrar consultas:", erro.message));
+    const rodar = () =>
+        encerrarVencidas()
+            .then(() => enviarAvisosDoDia())
+            // Carregado aqui para evitar dependência circular (a fila usa o controlador de consultas).
+            .then(() => require("./filaEsperaService").rotinaDaFila())
+            .catch((erro) => console.error("Falha nas rotinas automáticas das consultas:", erro.message));
     rodar();
     return setInterval(rodar, 60 * 1000);
 };
@@ -142,5 +189,6 @@ module.exports = {
     iniciarEncerramentoAutomatico,
     avisarAusencia,
     prepararCobranca,
-    pedirConfirmacao
+    pedirConfirmacao,
+    enviarAvisosDoDia
 };

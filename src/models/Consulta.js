@@ -23,6 +23,8 @@ const consultaSchema = new mongoose.Schema(
         observacoes: { type: String, trim: true, default: "" },
         canal: { type: String, enum: ["Paciente", "Recepção"], default: "Recepção" },
         lembreteEnviadoEm: { type: String, default: null },
+        // Aviso automático de que a consulta está chegando (antecedência das configurações). Um por data marcada.
+        avisoDoDiaEm: { type: Date, default: null },
         respostaConfirmacao: { type: String, enum: ["Confirmou", "Cancelou", "Sem resposta"], default: "Sem resposta" },
         historico: { type: [registroSchema], default: [] },
         // Cobrança criada quando a consulta de um paciente particular é realizada.

@@ -190,12 +190,15 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RN07 | A cobrança é gerada somente para pacientes do convênio Particular e somente após a consulta realizada. |
 | RN08 | O valor cobrado é definido no servidor; pagamento com valor inferior ao cobrado não é aceito. |
 | RN09 | Pacientes, profissionais e especialidades desativados mantêm o histórico e deixam de aceitar agendamentos. |
-| RN10 | Um profissional só pode ser excluído se não tiver consultas registradas. |
+| RN10 | Médicos e pacientes são excluídos de vez, junto com login, consultas (inclusive as pagas), notificações e listas de espera. |
 | RN11 | Antes do horário marcado, a consulta pode receber o pedido de confirmação, ser remarcada ou cancelada. A recepção registra o resultado (realizada ou não aconteceu) a qualquer momento e pode corrigi-lo depois; o médico registra só do horário até 1 hora depois. |
 | RN12 | Sem resultado registrado, a consulta é encerrada automaticamente 1 hora após o horário: confirmada vira "Realizada" (com cobrança do particular); sem confirmação vira "Não compareceu". |
 | RN13 | Consulta encerrada não pode ser cancelada nem remarcada. A recepção pode corrigir o resultado; ao deixar de ser realizada, a cobrança pendente é cancelada, e consulta já paga não deixa de ser realizada. O pagamento pendente do particular pode ser lembrado no máximo uma vez a cada 24 horas. |
 | RN14 | O paciente que não comparece recebe um aviso no portal e por e-mail convidando a agendar um novo horário. |
 | RN15 | Paciente com convênio precisa da carteirinha completa: número, plano e validade. Particular não tem carteirinha. |
+| RN16 | Um horário já marcado pode ter lista de espera de até 5 pacientes. Para entrar, o paciente marca um horário livre como alternativa. |
+| RN17 | Quando o horário vaga, o primeiro da lista recebe a oferta (portal e e-mail) e o horário fica reservado para ele por 2 horas (ou até o horário começar). Se aceitar, a consulta alternativa passa para o horário desejado; se recusar ou o prazo acabar, a vaga vai para o próximo. |
+| RN18 | O paciente recebe um aviso (portal e e-mail) quando faltam as horas da "Antecedência do lembrete" para a consulta, uma única vez. |
 
 ### 6.5 Ciclo de vida da consulta
 
@@ -249,7 +252,7 @@ flowchart LR
 | Framework web | Express 5 | Simplicidade na definição de rotas e middlewares |
 | Banco de dados | MongoDB com Mongoose | Modelo de documentos flexível e validação de esquema na aplicação |
 | Autenticação | JSON Web Token (JWT) e bcrypt | Sessão sem estado e armazenamento seguro de senhas |
-| E-mail | API do Brevo ou SMTP (Nodemailer) | Códigos de redefinição de senha e avisos da consulta ao paciente: marcada, pedido de confirmação, confirmada, remarcada, cancelada, ausência, cobrança e lembrete de pagamento |
+| E-mail | API do Brevo ou SMTP (Nodemailer) | E-mails com o visual da clínica (logo, detalhes e botão): código de redefinição de senha e avisos da consulta (marcada, pedido de confirmação, confirmada, aviso do dia, remarcada, cancelada, ausência, cobrança, lembrete de pagamento e vaga da lista de espera) |
 | Pagamentos | Stripe (Checkout embutido e webhooks) | Pix, cartão e boleto com conformidade PCI garantida pelo gateway |
 | Testes | `node:test` e Supertest | Testes de integração sem dependências pesadas |
 | Hospedagem | Render e MongoDB Atlas | Publicação contínua e banco gerenciado |
@@ -450,6 +453,7 @@ O projeto resultou em uma API funcional e publicada, integrada à interface web 
 
 | Versão | Entregas |
 |---|---|
+| [1.13.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.13.0) | Lista de espera por horário, aviso do dia, e-mails com a logo e exclusão completa |
 | [1.12.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.12.0) | Exclusão de paciente com login, consultas e notificações |
 | [1.11.1](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.11.1) | Horários já marcados aparecem ocupados para todos os perfis |
 | [1.11.0](https://github.com/clinica-consulta/clinica-backend/releases/tag/v1.11.0) | E-mails completos da consulta e confirmação do paciente só depois do pedido da recepção |
