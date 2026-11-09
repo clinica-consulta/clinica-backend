@@ -16,8 +16,11 @@ const notificacaoSchema = new mongoose.Schema(
         // Consulta ligada ao aviso (ex.: pagamento pendente).
         consulta: { type: mongoose.Schema.Types.ObjectId, ref: "Consulta", default: null },
         // "pagamento": consulta particular a pagar; "documento": atestado ou receita emitidos pelo médico;
-        // "remarcar": o paciente faltou e pode agendar um novo horário.
-        acao: { type: String, enum: ["", "pagamento", "documento", "remarcar"], default: "" },
+        // "remarcar": o paciente faltou e pode agendar um novo horário;
+        // "fila": o horário da lista de espera vagou e está oferecido ao paciente.
+        acao: { type: String, enum: ["", "pagamento", "documento", "remarcar", "fila"], default: "" },
+        // Entrada da lista de espera ligada ao aviso (acao "fila").
+        fila: { type: mongoose.Schema.Types.ObjectId, ref: "FilaEspera", default: null },
         lidaPor: { type: [mongoose.Schema.Types.ObjectId], ref: "Usuario", default: [] }
     },
     { timestamps: true }

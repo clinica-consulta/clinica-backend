@@ -1,4 +1,5 @@
 const Consulta = require("../models/Consulta");
+const FilaEspera = require("../models/FilaEspera");
 const Contador = require("../models/Contador");
 const Paciente = require("../models/Paciente");
 const Profissional = require("../models/Profissional");
@@ -11,6 +12,7 @@ const { ErroGateway } = stripe;
 const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
 const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca, pedirConfirmacao } = require("../services/cicloConsultaService");
 const { enviarEmailDaConsulta } = require("../services/emailConsultaService");
+const { oferecerVaga, contagemPorHorario } = require("../services/filaEsperaService");
 
 const { STATUS, STATUS_ABERTOS } = Consulta;
 // Status que registram o resultado do atendimento (só valem do horário até 1 hora depois).
@@ -65,10 +67,21 @@ const obter = async (req, res) => {
 const ocupados = async (req, res) => {
     const inicio = req.query.inicio || dataISO();
     const fim = req.query.fim || dataISO(90);
-    const consultas = await Consulta.find({ data: { $gte: inicio, $lte: fim }, status: { $ne: "Cancelada" } })
-        .select("profissional data hora")
-        .lean();
-    res.json(consultas.map((item) => ({ id: String(item._id), profissional: String(item.profissional), data: item.data, hora: item.hora })));
+    const [consultas, filas, reservas] = await Promise.all([
+        Consulta.find({ data: { $gte: inicio, $lte: fim }, status: { $ne: "Cancelada" } }).select("profissional data hora").lean(),
+        contagemPorHorario({ inicio, fim }),
+        // Horários oferecidos a alguém da lista de espera ficam reservados para essa pessoa.
+        FilaEspera.find({ status: "Oferecido", "oferta.expiraEm": { $gt: new Date() }, data: { $gte: inicio, $lte: fim } }).select("paciente profissional data hora").lean()
+    ]);
+    const chave = (item) => `${item.profissional}|${item.data}|${item.hora}`;
+    const naFila = new Map(filas.map((item) => [chave(item._id), item.total]));
+    const ocupados = consultas.map((item) => ({ id: String(item._id), profissional: String(item.profissional), data: item.data, hora: item.hora, fila: naFila.get(chave(item)) ?? 0 }));
+    const minhas = String(req.usuario.paciente ?? "");
+    for (const reserva of reservas) {
+        if (String(reserva.paciente) === minhas) continue;
+        ocupados.push({ id: `reserva-${reserva._id}`, profissional: String(reserva.profissional), data: reserva.data, hora: reserva.hora, fila: naFila.get(chave(reserva)) ?? 0, reservado: true });
+    }
+    res.json(ocupados);
 };
 
 // GET /consultas/horarios?profissional=&data=&ignorar=
@@ -85,9 +98,9 @@ const elegibilidade = async (req, res) => {
     res.json(await verificarElegibilidade(paciente, req.query.especialidade, req.query.data || dataISO()));
 };
 
-const criar = async (req, res) => {
-    const { profissional: profissionalId, data, hora, observacoes } = req.body ?? {};
-    const pacienteId = req.usuario.tipo === "paciente" ? req.usuario.paciente : req.body?.paciente;
+// Marca uma consulta com todas as regras (data, elegibilidade, horário livre) e avisa o paciente.
+// Usada pelo agendamento normal e pela lista de espera (consulta alternativa).
+const marcarConsulta = async ({ pacienteId, profissionalId, data, hora, observacoes = "", canal }) => {
     if (!pacienteId || !profissionalId || !data || !hora) {
         throw new AppError("Informe paciente, profissional, data e horário");
     }
@@ -99,10 +112,9 @@ const criar = async (req, res) => {
     const elegivel = await verificarElegibilidade(pacienteId, profissional.especialidade, data);
     if (!elegivel.ok) throw new AppError(elegivel.motivo, 422);
 
-    const livres = await horariosDisponiveis(profissional._id, data);
+    const livres = await horariosDisponiveis(profissional._id, data, null, pacienteId);
     if (!livres.includes(hora)) throw new AppError("Horário indisponível para este profissional", 409);
 
-    const canal = req.usuario.tipo === "paciente" ? "Paciente" : "Recepção";
     const consulta = new Consulta({
         codigo: String(await Contador.proximo("consulta")),
         data,
@@ -132,8 +144,14 @@ const criar = async (req, res) => {
         assunto: "Consulta marcada",
         mensagem: "Sua consulta foi marcada. Ela ainda não está confirmada: a recepção vai enviar um pedido de confirmação, e aí é só confirmar sua presença pelo portal."
     });
+    return consulta;
+};
 
-    res.status(201).json(consulta);
+const criar = async (req, res) => {
+    const { profissional: profissionalId, data, hora, observacoes } = req.body ?? {};
+    const pacienteId = req.usuario.tipo === "paciente" ? req.usuario.paciente : req.body?.paciente;
+    const canal = req.usuario.tipo === "paciente" ? "Paciente" : "Recepção";
+    res.status(201).json(await marcarConsulta({ pacienteId, profissionalId, data, hora, observacoes, canal }));
 };
 
 // Quem pode levar a consulta para cada status.
@@ -219,7 +237,9 @@ const alterarStatus = async (req, res) => {
             texto: `${quando} voltou a ficar disponível na agenda.`,
             publico: ["recepcionista", "administrador"]
         });
-        await enviarEmailDaConsulta(consulta, { assunto: "Consulta cancelada", mensagem: "Esta consulta foi cancelada e o horário foi liberado.", chamada: "Se quiser, agende um novo horário pelo portal do paciente:", caminho: "/paciente/agendar" });
+        // O horário vagou: o primeiro da lista de espera dele recebe a oferta.
+        await oferecerVaga(consulta);
+        await enviarEmailDaConsulta(consulta, { assunto: "Consulta cancelada", mensagem: "Esta consulta foi cancelada e o horário foi liberado.", botao: "Agendar novo horário", caminho: "/paciente/agendar" });
     }
 
     res.json(consulta);
@@ -245,7 +265,7 @@ const remarcar = async (req, res) => {
 
     const anterior = `${consulta.data} ${consulta.hora}`;
     // Data nova pede confirmação nova: a recepção envia outro pedido, e só então o paciente confirma.
-    consulta.set({ data, hora, status: "Remarcada", respostaConfirmacao: "Sem resposta", lembreteEnviadoEm: null });
+    consulta.set({ data, hora, status: "Remarcada", respostaConfirmacao: "Sem resposta", lembreteEnviadoEm: null, avisoDoDiaEm: null });
     registrar(consulta, `Remarcada de ${anterior} para ${data} ${hora}`);
     await consulta.save();
 
@@ -258,6 +278,8 @@ const remarcar = async (req, res) => {
         profissional: consulta.profissional
     });
     await enviarEmailDaConsulta(consulta, { assunto: "Consulta remarcada", mensagem: `Sua consulta mudou de data (antes: ${formatarDataBR(anterior.slice(0, 10))} às ${anterior.slice(11)}). A recepção vai pedir a confirmação da nova data.` });
+    // O horário antigo vagou: o primeiro da lista de espera dele recebe a oferta.
+    await oferecerVaga({ profissional: consulta.profissional, data: anterior.slice(0, 10), hora: anterior.slice(11) });
 
     res.json(consulta);
 };
@@ -391,6 +413,7 @@ const verificarPagamento = async (req, res) => {
 };
 
 module.exports = {
+    marcarConsulta,
     pagar,
     lembrarPagamentoPendente,
     checkout,
