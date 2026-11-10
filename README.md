@@ -146,7 +146,7 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RF02 | Permitir o cadastro público do paciente, com validação de CPF e escolha do convênio. |
 | RF03 | Permitir que cada usuário edite os próprios dados e troque a senha. |
 | RF04 | Redefinir a senha por código de 6 dígitos enviado por e-mail, com validade de 15 minutos, limite de tentativas e confirmação de CPF. |
-| RF05 | Manter o cadastro de pacientes, com ativação e desativação que preservam o histórico. |
+| RF05 | Manter o cadastro de pacientes e permitir a exclusão completa (cadastro, acesso, consultas, notificações e listas de espera). |
 | RF06 | Manter o cadastro de profissionais, com especialidade, CRM, contato, expediente semanal e acesso próprio. |
 | RF07 | Manter os catálogos de especialidades e convênios, incluindo as especialidades cobertas por cada convênio. |
 | RF08 | Registrar bloqueios de agenda por horário ou por período. |
@@ -158,8 +158,8 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RF14 | Gerar a cobrança da consulta particular após a realização e permitir o pagamento on-line por Pix, cartão ou boleto. |
 | RF15 | Permitir que a recepção registre pagamentos feitos presencialmente. |
 | RF16 | Enviar notificações por perfil, por paciente ou por profissional, com controle de leitura. |
-| RF17 | Enviar lembretes de consulta individuais ou em lote. |
-| RF18 | Manter a fila de espera por especialidade, com prioridade e convite quando um horário for liberado. |
+| RF17 | Enviar pedidos de confirmação individuais ou em lote e o aviso automático antes da consulta, conforme a antecedência configurada. |
+| RF18 | Manter uma lista de espera de até cinco pacientes por horário marcado, cada um com uma consulta alternativa, e oferecer o horário ao primeiro da lista quando ele vagar. |
 | RF19 | Permitir que o profissional envie atestados e receitas ao paciente. |
 | RF20 | Disponibilizar indicadores de consultas, presença, faltas, cancelamentos e ocupação da agenda. |
 | RF21 | Manter as configurações da clínica, como dados cadastrais e valor da consulta particular. |
@@ -181,7 +181,7 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 
 | Código | Regra |
 |---|---|
-| RN01 | Os horários são oferecidos em intervalos de 30 minutos, dentro do expediente e sem consultas ativas ou bloqueios. |
+| RN01 | Os horários são oferecidos em intervalos de 30 minutos, dentro do expediente e sem consultas ativas, bloqueios ou reservas da lista de espera. |
 | RN02 | No dia corrente, só são oferecidos horários posteriores à hora atual. |
 | RN03 | O agendamento exige paciente ativo, especialidade ativa e coberta pelo convênio e, para quem tem convênio, carteirinha válida no dia da consulta. |
 | RN04 | O cancelamento libera o horário imediatamente. |
@@ -292,7 +292,7 @@ docs/               Guia técnico de desenvolvimento e implantação
 | `bloqueios` | Horários e períodos indisponíveis |
 | `especialidades` | Catálogo de especialidades da clínica |
 | `convenios` | Convênios e especialidades cobertas |
-| `fila_espera` | Pacientes aguardando vaga, com prioridade |
+| `fila_espera` | Pacientes aguardando um horário marcado, com a consulta alternativa e a oferta com prazo |
 | `notificacoes` | Avisos, lembretes e documentos médicos |
 | `configuracoes` | Dados e preferências da clínica |
 | `contadores` | Sequência dos códigos das consultas |
@@ -334,12 +334,12 @@ Todas as rotas ficam sob o prefixo `/api` e trocam dados em JSON. São públicas
 | Recurso | Rota | Principais operações |
 |---|---|---|
 | Acesso | `/auth` | login, cadastro, recuperação e redefinição de senha, dados da conta |
-| Pacientes | `/pacientes` | listar, cadastrar, editar, ativar e desativar |
+| Pacientes | `/pacientes` | listar, cadastrar, editar e excluir |
 | Profissionais | `/profissionais` | listar, cadastrar, editar, expediente, ativar e excluir |
 | Bloqueios | `/bloqueios` | listar, criar e remover |
 | Consultas | `/consultas` | agendar, horários livres, elegibilidade, status, remarcar, lembrete e pagamento |
 | Pagamentos | `/pagamentos` | webhook do Stripe e configuração do pagamento on-line |
-| Fila de espera | `/fila-espera` | adicionar, convidar e remover |
+| Fila de espera | `/fila-espera` | listar, entrar na lista, aceitar a vaga oferecida e sair |
 | Notificações | `/notificacoes` | listar, enviar aviso ou documento, marcar como lida |
 | Especialidades | `/especialidades` | listar, cadastrar, editar e desativar |
 | Convênios | `/convenios` | listar, cadastrar, editar e desativar |
@@ -409,7 +409,7 @@ sequenceDiagram
 | Pagamentos | Dados de cartão processados exclusivamente pelo Stripe; webhook com verificação de assinatura |
 | Segredos | Chaves e senhas em variáveis de ambiente, fora do repositório |
 | CORS | Origens permitidas configuráveis por variável de ambiente |
-| LGPD | Coleta limitada aos dados necessários ao atendimento e preservação do histórico em vez de exclusão |
+| LGPD | Coleta limitada aos dados necessários ao atendimento e exclusão completa do paciente quando solicitada |
 
 ---
 
@@ -483,10 +483,9 @@ A API atende ao objetivo de centralizar o agendamento e a gestão de consultas, 
 Como trabalhos futuros, destacam-se:
 
 - Relatórios por profissional e por período, com exportação.
-- Confirmação de agendamento e lembrete automático por e-mail na véspera da consulta.
 - Prazo mínimo configurável para cancelamento.
 - Limite de tentativas de login e renovação de sessão.
-- Exportação e exclusão dos dados do paciente, ampliando o atendimento à LGPD.
+- Exportação dos dados do paciente, ampliando o atendimento à LGPD.
 - Logs estruturados, rota de saúde com verificação do banco e rotina de backup.
 - Documentação interativa da API (OpenAPI).
 
