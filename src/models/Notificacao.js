@@ -27,7 +27,8 @@ const notificacaoSchema = new mongoose.Schema(
 );
 
 notificacaoSchema.statics.filtroPara = function (usuario) {
-    const filtro = { publico: usuario.tipo };
+    // O administrador também vê os avisos da recepção (ele tem os mesmos poderes sobre a agenda).
+    const filtro = { publico: usuario.tipo === "administrador" ? { $in: ["administrador", "recepcionista"] } : usuario.tipo };
     if (usuario.tipo === "paciente") filtro.paciente = { $in: [null, usuario.paciente] };
     if (usuario.tipo === "profissional") filtro.profissional = { $in: [null, usuario.profissional] };
     return filtro;
