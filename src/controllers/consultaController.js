@@ -237,6 +237,17 @@ const alterarStatus = async (req, res) => {
             texto: `${quando} voltou a ficar disponível na agenda.`,
             publico: ["recepcionista", "administrador"]
         });
+        // Quando a clínica cancela, o paciente também é avisado no portal (o e-mail vai sempre).
+        if (req.usuario.tipo !== "paciente") {
+            await notificar({
+                titulo: "Consulta cancelada",
+                texto: `Sua consulta de ${consulta.especialidade} em ${quando} foi cancelada pela clínica. Se quiser, agende um novo horário aqui no portal.`,
+                publico: ["paciente"],
+                paciente: consulta.paciente,
+                consulta: consulta._id,
+                acao: "remarcar"
+            });
+        }
         // O horário vagou: o primeiro da lista de espera dele recebe a oferta.
         await oferecerVaga(consulta);
         await enviarEmailDaConsulta(consulta, { assunto: "Consulta cancelada", mensagem: "Esta consulta foi cancelada e o horário foi liberado.", botao: "Agendar novo horário", caminho: "/paciente/agendar" });
