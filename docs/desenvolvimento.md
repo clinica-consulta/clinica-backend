@@ -30,7 +30,7 @@ Na primeira vez, o `npm run setup` cria sozinho o `.env` na raiz, com um segredo
 
 ### Banco e acessos iniciais
 
-`npm run setup` cria a **Clínica Senai** (dados fictícios), as especialidades Clínica geral, Cardiologia e Pediatria, os convênios Particular e Unimed, e três acessos:
+`npm run setup` cria a **Clínica Senai** (dados fictícios), o catálogo de especialidades e os 12 convênios mais comuns (Particular, Unimed, Bradesco Saúde, SulAmérica, Amil e outros), e três acessos:
 
 | Perfil | E-mail | Senha |
 |---|---|---|

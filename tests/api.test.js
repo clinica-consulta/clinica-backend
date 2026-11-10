@@ -369,19 +369,33 @@ describe("agendamento", () => {
             assert.equal(aguardando.body.pagamento.status, "Pendente");
             assert.equal((await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"))).status, 409);
 
+            // Pix vencido sem pagamento: a cobrança continua pendente e o paciente pode pagar de novo.
+            Object.assign(sessao, { payment_intent: { id: "pi_falhou", status: "requires_payment_method" } });
+            assert.equal((await enviarWebhook("checkout.session.async_payment_failed", sessao)).status, 200);
+            const falhou = await api().get(`/api/consultas/${criada.body.id}`).set(como("recepcao"));
+            assert.equal(falhou.body.pagamento.status, "Pendente");
+            assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento não concluído", consulta: criada.body.id }), 1);
+            await enviarWebhook("checkout.session.async_payment_failed", sessao);
+            assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento não concluído", consulta: criada.body.id }), 1, "avisa uma vez só");
+            const novaTentativa = await api().post(`/api/consultas/${criada.body.id}/pagamento/checkout`).set(como("recepcao"));
+            assert.equal(novaTentativa.status, 200, JSON.stringify(novaTentativa.body));
+            assert.equal(novaTentativa.body.clientSecret, "cs_test_2_secret");
+            const segunda = sessoes.get("cs_test_2");
+            Object.assign(segunda, { status: "complete", payment_status: "unpaid" });
+
             // Pix compensado.
-            Object.assign(sessao, {
+            Object.assign(segunda, {
                 payment_status: "paid",
                 payment_intent: { id: "pi_teste123456789", latest_charge: { payment_method_details: { type: "pix" } } }
             });
-            assert.equal((await enviarWebhook("checkout.session.async_payment_succeeded", sessao)).status, 200);
+            assert.equal((await enviarWebhook("checkout.session.async_payment_succeeded", segunda)).status, 200);
             const paga = await api().get(`/api/consultas/${criada.body.id}`).set(como("recepcao"));
             assert.equal(paga.body.pagamento.status, "Pago");
             assert.equal(paga.body.pagamento.metodo, "Pix");
             assert.equal(paga.body.pagamento.gateway, "Stripe");
 
             // Webhook repetido não gera pagamento em dobro.
-            await enviarWebhook("checkout.session.async_payment_succeeded", sessao);
+            await enviarWebhook("checkout.session.async_payment_succeeded", segunda);
             assert.equal(await Notificacao.countDocuments({ titulo: "Pagamento confirmado", consulta: criada.body.id }), 1);
 
             // Assinatura falsa é recusada.
@@ -395,6 +409,27 @@ describe("agendamento", () => {
             stripeService.usarClienteDeTeste(null);
             for (const chave of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "FRONTEND_URL"]) delete process.env[chave];
         }
+    });
+
+    it("avisa o paciente no portal quando a clínica cancela e mostra ao administrador os avisos da recepção", async () => {
+        const Notificacao = require("../src/models/Notificacao");
+        const pacientes = await api().get("/api/pacientes").set(como("recepcao"));
+        const paciente = pacientes.body.find((item) => item.status === "Ativo" && item.convenio === "Particular");
+        let dia = 2;
+        let livres = [];
+        for (; dia < 14 && !livres.length; dia++) livres = (await api().get(`/api/consultas/horarios?profissional=${ana.id}&data=${dataISO(dia)}`).set(como("recepcao"))).body.horarios;
+        const criada = await api().post("/api/consultas").set(como("recepcao")).send({ paciente: paciente.id, profissional: ana.id, data: dataISO(dia - 1), hora: livres[0] });
+        assert.equal(criada.status, 201, JSON.stringify(criada.body));
+        const cancelada = await api().patch(`/api/consultas/${criada.body.id}/status`).set(como("recepcao")).send({ status: "Cancelada" });
+        assert.equal(cancelada.status, 200);
+        const aviso = await Notificacao.findOne({ consulta: criada.body.id, titulo: "Consulta cancelada" });
+        assert.ok(aviso, "paciente recebe o aviso no portal");
+        assert.deepEqual(aviso.publico, ["paciente"]);
+        assert.equal(aviso.acao, "remarcar");
+
+        await Notificacao.create({ titulo: "Só da recepção", texto: "teste", publico: ["recepcionista"] });
+        const doAdmin = await api().get("/api/notificacoes").set(como("admin"));
+        assert.ok(doAdmin.body.some((item) => item.titulo === "Só da recepção"));
     });
 
     it("não oferece horários que já passaram", async () => {
