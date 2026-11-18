@@ -548,6 +548,60 @@ describe("ciclo da consulta", () => {
         const Notificacao = require("../src/models/Notificacao");
         assert.ok(await Notificacao.exists({ consulta: id, titulo: "Confirme sua consulta" }));
     });
+
+    it("paciente particular confirma só pagando, e o pedido já leva a cobrança", async () => {
+        const Notificacao = require("../src/models/Notificacao");
+        const Usuario = require("../src/models/Usuario");
+        const jwt = require("jsonwebtoken");
+        const particular = (await pacientes()).find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const id = await criarConsulta(particular.id);
+        const pedido = await api().post(`/api/consultas/${id}/lembrete`).set(como("recepcao"));
+        assert.equal(pedido.status, 200);
+        assert.equal(pedido.body.pagamento.status, "Pendente", "cobrança enviada junto com o pedido");
+        assert.ok(await Notificacao.exists({ consulta: id, titulo: "Confirme sua consulta", acao: "pagamento" }));
+
+        // Entra como o próprio paciente particular.
+        const conta = await Usuario.findOne({ paciente: particular.id });
+        const token = jwt.sign({ id: String(conta._id), tipo: conta.tipo }, process.env.JWT_SECRET);
+        const dele = { Authorization: `Bearer ${token}` };
+        const semPagar = await api().patch(`/api/consultas/${id}/status`).set(dele).send({ status: "Confirmada" });
+        assert.equal(semPagar.status, 409, "sem pagamento não confirma");
+        assert.match(semPagar.body.mensagem, /pague/);
+
+        const pago = await api().post(`/api/consultas/${id}/pagamento/simular`).set(dele);
+        assert.equal(pago.status, 200, JSON.stringify(pago.body));
+        assert.equal(pago.body.pagamento.status, "Pago");
+        assert.equal(pago.body.pagamento.gateway, "Simulação");
+        assert.equal(pago.body.status, "Confirmada", "o pagamento confirma a consulta");
+        assert.equal(pago.body.respostaConfirmacao, "Confirmou");
+        assert.ok(await Notificacao.exists({ titulo: "Consulta confirmada", paciente: particular.id }));
+        const deNovo = await api().post(`/api/consultas/${id}/pagamento/simular`).set(dele);
+        assert.equal(deNovo.status, 409);
+
+        // Cancelar depois de pago avisa a recepção para devolver o valor.
+        const cancelada = await api().patch(`/api/consultas/${id}/status`).set(dele).send({ status: "Cancelada" });
+        assert.equal(cancelada.status, 200);
+        assert.ok(await Notificacao.exists({ titulo: "Devolução de pagamento" }));
+    });
+
+    it("cancelar antes de pagar cancela a cobrança; convênio confirma sem pagar", async () => {
+        const lista = await pacientes();
+        const particular = lista.find((item) => item.convenio === "Particular" && item.status === "Ativo");
+        const id = await criarConsulta(particular.id);
+        await api().post(`/api/consultas/${id}/lembrete`).set(como("recepcao"));
+        const cancelada = await api().patch(`/api/consultas/${id}/status`).set(como("recepcao")).send({ status: "Cancelada" });
+        assert.equal(cancelada.status, 200);
+        assert.equal(cancelada.body.pagamento?.status ?? null, null);
+
+        const eu = await api().get("/api/auth/me").set(como("paciente"));
+        const comConvenio = lista.find((item) => item.id === eu.body.paciente);
+        assert.notEqual(comConvenio.convenio, "Particular");
+        const outra = await criarConsulta(comConvenio.id);
+        const pedido = await api().post(`/api/consultas/${outra}/lembrete`).set(como("recepcao"));
+        assert.equal(pedido.body.pagamento?.status ?? null, null, "convênio não recebe cobrança");
+        const confirmou = await api().patch(`/api/consultas/${outra}/status`).set(como("paciente")).send({ status: "Confirmada" });
+        assert.equal(confirmou.status, 200);
+    });
 });
 
 describe("horários ocupados", () => {
