@@ -1,4 +1,5 @@
 const Paciente = require("../models/Paciente");
+const Profissional = require("../models/Profissional");
 const Configuracao = require("../models/Configuracao");
 const { dataISO, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("./notificacaoService");
@@ -43,9 +44,33 @@ const confirmarPagamento = async (consulta, { metodo, codigo, gateway, transacao
     consulta.pagamento.situacaoGateway = situacaoGateway;
     consulta.pagamento.pagoEm = new Date();
     consulta.historico.push({ em: dataISO(), texto: `Pagamento de ${formatarValor(consulta.pagamento.valor)} via ${metodo} (${gateway})` });
+    // Paciente particular confirma a consulta pagando: com o pagamento aprovado, ela fica confirmada.
+    const confirmou = ["Agendada", "Remarcada"].includes(consulta.status);
+    if (confirmou) {
+        consulta.status = "Confirmada";
+        consulta.respostaConfirmacao = "Confirmou";
+        consulta.historico.push({ em: dataISO(), texto: "Consulta confirmada com o pagamento" });
+    }
     await consulta.save();
 
     const paciente = await Paciente.findById(consulta.paciente);
+    if (confirmou) {
+        const profissional = await Profissional.findById(consulta.profissional);
+        const quando = `${formatarDataBR(consulta.data)} às ${consulta.hora}`;
+        await notificar({
+            titulo: "Consulta confirmada",
+            texto: `${consulta.especialidade}${profissional ? ` com ${profissional.nome}` : ""} · ${quando}. Confirmada com o pagamento.`,
+            publico: ["paciente", "recepcionista", "profissional"],
+            paciente: consulta.paciente,
+            profissional: consulta.profissional
+        });
+        await enviarEmailDaConsulta(consulta, {
+            assunto: "Consulta confirmada",
+            mensagem: `Recebemos o pagamento de ${formatarValor(consulta.pagamento.valor)} e sua consulta está confirmada. Esperamos você!`,
+            extras: [{ rotulo: "Comprovante", valor: codigo }],
+            observacao: "Se não puder ir, cancele pelo portal e fale com a recepção sobre o valor pago."
+        });
+    }
     await notificar({
         titulo: "Pagamento recebido",
         texto: `${paciente?.nome ?? "Paciente"} pagou ${formatarValor(consulta.pagamento.valor)} via ${metodo} (consulta #${consulta.codigo}).`,

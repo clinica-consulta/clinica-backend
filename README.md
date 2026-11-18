@@ -155,7 +155,7 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RF11 | Agendar, confirmar, remarcar e cancelar consultas, com código sequencial e canal de origem. |
 | RF12 | Registrar a consulta como realizada ou como não comparecimento. |
 | RF13 | Manter o histórico de alterações de cada consulta. |
-| RF14 | Gerar a cobrança da consulta particular após a realização e permitir o pagamento on-line por Pix, cartão ou boleto. |
+| RF14 | Gerar a cobrança da consulta particular junto com o pedido de confirmação, confirmar a consulta quando o pagamento é aprovado e permitir o pagamento on-line por Pix, cartão ou boleto. |
 | RF15 | Permitir que a recepção registre pagamentos feitos presencialmente. |
 | RF16 | Enviar notificações por perfil, por paciente ou por profissional, com controle de leitura. |
 | RF17 | Enviar pedidos de confirmação individuais ou em lote e o aviso automático antes da consulta, conforme a antecedência configurada. |
@@ -186,8 +186,8 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 | RN03 | O agendamento exige paciente ativo, especialidade ativa e coberta pelo convênio e, para quem tem convênio, carteirinha válida no dia da consulta. |
 | RN04 | O cancelamento libera o horário imediatamente. |
 | RN05 | Após a remarcação, a confirmação volta para "Sem resposta" até o paciente confirmar a nova data. |
-| RN06 | Toda consulta nasce aguardando confirmação. A recepção envia um único pedido de confirmação (portal e e-mail), e só depois dele o próprio paciente pode confirmar a presença. Ao remarcar, a nova data pede um novo pedido. |
-| RN07 | A cobrança é gerada somente para pacientes do convênio Particular e somente após a consulta realizada. |
+| RN06 | Toda consulta nasce aguardando confirmação. A recepção envia um único pedido de confirmação (portal e e-mail), e só depois dele o próprio paciente pode confirmar. Paciente de convênio confirma pelo botão "Confirmar presença"; paciente particular confirma **pagando**: o pedido já leva a cobrança e a consulta só fica confirmada depois do pagamento (on-line, no balcão ou pelo botão "Já paguei" de demonstração). Ao remarcar, a nova data pede um novo pedido. |
+| RN07 | A cobrança é gerada somente para pacientes do convênio Particular, junto com o pedido de confirmação (ou, se ainda não existir, quando a consulta é realizada). Cancelar ou faltar antes de pagar cancela a cobrança; cancelar depois de pagar avisa a recepção para combinar a devolução. |
 | RN08 | O valor cobrado é definido no servidor; pagamento com valor inferior ao cobrado não é aceito. |
 | RN09 | Pacientes, profissionais e especialidades desativados mantêm o histórico e deixam de aceitar agendamentos. |
 | RN10 | Médicos e pacientes são excluídos de vez, junto com login, consultas (inclusive as pagas), notificações e listas de espera. |
@@ -205,10 +205,10 @@ O desenvolvimento seguiu uma abordagem **iterativa e incremental**, com entregas
 ```mermaid
 stateDiagram-v2
     [*] --> Agendada
-    Agendada --> Confirmada: paciente responde ao pedido de confirmação
+    Agendada --> Confirmada: convênio confirma / particular paga
     Agendada --> Remarcada: nova data
     Confirmada --> Remarcada: nova data
-    Remarcada --> Confirmada: paciente confirma
+    Remarcada --> Confirmada: convênio confirma / particular paga
     Agendada --> Cancelada
     Confirmada --> Cancelada
     Remarcada --> Cancelada
@@ -354,6 +354,7 @@ Todas as rotas ficam sob o prefixo `/api` e trocam dados em JSON. São públicas
 | `POST` | `/api/consultas/:id/pagamento/checkout` | Abre a sessão de pagamento do Stripe e devolve o `client_secret` para o Checkout embutido |
 | `POST` | `/api/consultas/:id/pagamento/verificar` | Consulta o Stripe e atualiza a situação do pagamento |
 | `POST` | `/api/consultas/:id/pagamento` | Registro de pagamento presencial pela recepção |
+| `POST` | `/api/consultas/:id/pagamento/simular` | Botão "Já paguei" de demonstração: marca como paga sem cobrar e confirma a consulta |
 | `POST` | `/api/pagamentos/webhook` | Recebe os eventos do Stripe, com assinatura verificada |
 | `GET` | `/api/pagamentos/config` | Informa se o pagamento on-line está ativo |
 

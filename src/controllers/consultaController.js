@@ -9,7 +9,7 @@ const { notificar } = require("../services/notificacaoService");
 const { verificarElegibilidade, horariosDisponiveis } = require("../services/agendaService");
 const stripe = require("../services/stripeService");
 const { ErroGateway } = stripe;
-const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe } = require("../services/pagamentoService");
+const { avisarCobranca, lembrarPagamento, confirmarPagamento, abrirSessao, sincronizarComStripe, formatarValor } = require("../services/pagamentoService");
 const { momentoDaConsulta, encerrarVencidas, avisarAusencia, prepararCobranca, pedirConfirmacao } = require("../services/cicloConsultaService");
 const { enviarEmailDaConsulta } = require("../services/emailConsultaService");
 const { oferecerVaga, contagemPorHorario } = require("../services/filaEsperaService");
@@ -142,7 +142,7 @@ const marcarConsulta = async ({ pacienteId, profissionalId, data, hora, observac
 
     await enviarEmailDaConsulta(consulta, {
         assunto: "Consulta marcada",
-        mensagem: "Sua consulta foi marcada. Ela ainda não está confirmada: a recepção vai enviar um pedido de confirmação, e aí é só confirmar sua presença pelo portal."
+        mensagem: "Sua consulta foi marcada. Ela ainda não está confirmada: a recepção vai enviar o pedido de confirmação. Paciente particular confirma pagando a consulta pelo portal; com convênio, é só confirmar a presença."
     });
     return consulta;
 };
@@ -176,6 +176,7 @@ const alterarStatus = async (req, res) => {
         throw new AppError("A confirmação fica disponível quando a recepção enviar o pedido de confirmação", 409);
     }
     if (consulta.status === "Cancelada") throw new AppError("A consulta foi cancelada e não pode mais ser alterada", 409);
+    if (status === "Confirmada") await exigirPagamentoParaConfirmar(consulta);
 
     const resultado = RESULTADOS.includes(status);
     const momento = momentoDaConsulta(consulta);
@@ -208,6 +209,12 @@ const alterarStatus = async (req, res) => {
     const cobrar = status === "Realizada" && (await prepararCobranca(consulta));
     if (status === "Confirmada") consulta.respostaConfirmacao = "Confirmou";
     if (status === "Cancelada") consulta.respostaConfirmacao = "Cancelou";
+    // Cancelada ou sem comparecimento antes de pagar: a cobrança deixa de valer.
+    const reembolsar = status === "Cancelada" && consulta.pagamento?.status === "Pago";
+    if (["Cancelada", "Não compareceu"].includes(status) && consulta.pagamento?.status === "Pendente") {
+        consulta.pagamento = { status: null, valor: 0 };
+        registrar(consulta, "Cobrança cancelada junto com a consulta");
+    }
     registrar(consulta, observacao || `Status alterado para ${status}`);
     await consulta.save();
 
@@ -246,6 +253,14 @@ const alterarStatus = async (req, res) => {
                 paciente: consulta.paciente,
                 consulta: consulta._id,
                 acao: "remarcar"
+            });
+        }
+        if (reembolsar) {
+            const paciente = await Paciente.findById(consulta.paciente);
+            await notificar({
+                titulo: "Devolução de pagamento",
+                texto: `${paciente?.nome ?? "Paciente"} cancelou a consulta #${consulta.codigo} já paga (${formatarValor(consulta.pagamento.valor)} via ${consulta.pagamento.metodo}). Combine a devolução com o paciente.`,
+                publico: ["recepcionista", "administrador"]
             });
         }
         // O horário vagou: o primeiro da lista de espera dele recebe a oferta.
@@ -343,10 +358,25 @@ const enviarLembretesPendentes = async (_req, res) => {
 
 const METODOS = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro"];
 
-const exigirCobrancaPendente = (consulta) => {
+// Pedido de confirmação enviado antes desta regra existir: cria a cobrança do particular na hora.
+const garantirCobranca = async (consulta) => {
+    if (consulta.pagamento?.status || !consulta.lembreteEnviadoEm || !STATUS_ABERTOS.includes(consulta.status)) return;
+    if (await prepararCobranca(consulta)) await consulta.save();
+};
+
+const exigirCobrancaPendente = async (consulta) => {
+    await garantirCobranca(consulta);
     if (consulta.pagamento?.status === "Pago") throw new AppError("Esta consulta já está paga", 409);
     if (consulta.pagamento?.status !== "Pendente") {
-        throw new AppError("Não há pagamento liberado para esta consulta. Ele é liberado para pacientes particulares depois que a consulta é realizada.", 409);
+        throw new AppError("Não há pagamento liberado para esta consulta. Para pacientes particulares, ele chega junto com o pedido de confirmação da recepção.", 409);
+    }
+};
+
+// Paciente particular só confirma pagando. Convênio confirma direto.
+const exigirPagamentoParaConfirmar = async (consulta) => {
+    await garantirCobranca(consulta);
+    if (consulta.pagamento?.status === "Pendente") {
+        throw new AppError(`Para confirmar esta consulta, pague ${formatarValor(consulta.pagamento.valor)} pelo portal. Ela só fica confirmada depois do pagamento.`, 409);
     }
 };
 
@@ -360,12 +390,28 @@ const pagar = async (req, res) => {
     }
 
     const consulta = await buscar(req, req.params.id);
-    exigirCobrancaPendente(consulta);
+    await exigirCobrancaPendente(consulta);
 
     await confirmarPagamento(consulta, {
         metodo,
         codigo: `PAG-${consulta.codigo}-${Date.now().toString(36).toUpperCase()}`,
         gateway: "Recepção"
+    });
+    res.json(consulta);
+};
+
+// Botão "Já paguei" (só para demonstração): marca a consulta como paga sem cobrar nada, e ela fica confirmada.
+const simularPagamento = async (req, res) => {
+    const consulta = await buscar(req, req.params.id);
+    await exigirCobrancaPendente(consulta);
+    if (consulta.pagamento.situacaoGateway === "aguardando confirmação") {
+        throw new AppError("Seu pagamento já foi enviado e está aguardando confirmação (Pix ou boleto). Assim que cair, você recebe um aviso.", 409);
+    }
+
+    await confirmarPagamento(consulta, {
+        metodo: "Simulação",
+        codigo: `SIM-${consulta.codigo}-${Date.now().toString(36).toUpperCase()}`,
+        gateway: "Simulação"
     });
     res.json(consulta);
 };
@@ -376,7 +422,7 @@ const checkout = async (req, res) => {
         throw new AppError("O pagamento on-line ainda não está configurado nesta clínica", 503);
     }
     const consulta = await buscar(req, req.params.id);
-    exigirCobrancaPendente(consulta);
+    await exigirCobrancaPendente(consulta);
 
     let resultado;
     try {
@@ -395,7 +441,7 @@ const checkout = async (req, res) => {
 // A recepção lembra o paciente particular de uma cobrança pendente (no máximo uma vez a cada 24 horas).
 const lembrarPagamentoPendente = async (req, res) => {
     const consulta = await buscar(req, req.params.id);
-    exigirCobrancaPendente(consulta);
+    await exigirCobrancaPendente(consulta);
     const ultimo = consulta.pagamento.lembreteEm ? new Date(consulta.pagamento.lembreteEm).getTime() : 0;
     const proximo = ultimo + INTERVALO_LEMBRETE_PAGAMENTO;
     if (Date.now() < proximo) {
@@ -426,6 +472,7 @@ const verificarPagamento = async (req, res) => {
 module.exports = {
     marcarConsulta,
     pagar,
+    simularPagamento,
     lembrarPagamentoPendente,
     checkout,
     verificarPagamento,
