@@ -4,7 +4,7 @@ const Profissional = require("../models/Profissional");
 const Configuracao = require("../models/Configuracao");
 const { dataISO, horaAtual, formatarDataBR } = require("../utils/datas");
 const { notificar } = require("./notificacaoService");
-const { avisarCobranca } = require("./pagamentoService");
+const { avisarCobranca, formatarValor } = require("./pagamentoService");
 const { enviarEmailDaConsulta } = require("./emailConsultaService");
 
 const { STATUS_ABERTOS } = Consulta;
@@ -62,9 +62,33 @@ const avisarAusencia = async (consulta) => {
 };
 
 // Pede ao paciente (no portal e por e-mail) que confirme a presença. Só o paciente confirma.
+// Paciente particular confirma pagando: o pedido já leva a cobrança, e a consulta só fica confirmada depois do pagamento.
+// Paciente de convênio confirma pelo botão "Confirmar presença".
 const pedirConfirmacao = async (consulta) => {
     const profissional = await Profissional.findById(consulta.profissional);
     const comQuem = profissional ? ` com ${profissional.nome}` : "";
+    if (await prepararCobranca(consulta)) await consulta.save();
+
+    if (consulta.pagamento?.status === "Pendente") {
+        const valor = formatarValor(consulta.pagamento.valor);
+        await notificar({
+            titulo: "Confirme sua consulta",
+            texto: `Você tem consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}. Para confirmar, pague ${valor} aqui no portal (Pix, cartão ou boleto). A consulta só fica confirmada depois do pagamento.`,
+            publico: ["paciente"],
+            paciente: consulta.paciente,
+            consulta: consulta._id,
+            acao: "pagamento"
+        });
+        await enviarEmailDaConsulta(consulta, {
+            assunto: "Confirme sua consulta com o pagamento",
+            mensagem: `A clínica enviou a confirmação da sua consulta junto com o pagamento. Para confirmar, pague ${valor} pelo portal do paciente: a consulta só fica confirmada depois do pagamento.`,
+            botao: "Pagar e confirmar",
+            extras: [{ rotulo: "Valor", valor }],
+            observacao: "Se não puder ir, cancele pelo portal para liberar o horário para outro paciente."
+        });
+        return;
+    }
+
     await notificar({
         titulo: "Confirme sua consulta",
         texto: `Você tem consulta de ${consulta.especialidade}${comQuem} em ${quandoDe(consulta)}. Confirme sua presença aqui no portal.`,
@@ -81,7 +105,7 @@ const pedirConfirmacao = async (consulta) => {
     });
 };
 
-// Libera a cobrança do paciente particular quando a consulta é realizada.
+// Cria a cobrança do paciente particular: no pedido de confirmação ou, se ainda não existir, quando a consulta é realizada.
 // Devolve true quando criou uma cobrança nova (quem chamou avisa o paciente depois de salvar).
 const prepararCobranca = async (consulta) => {
     if (consulta.pagamento?.status) return false;
@@ -107,6 +131,10 @@ const encerrarVencidas = async () => {
 
         candidata.status = novoStatus;
         const cobrar = novoStatus === "Realizada" && (await prepararCobranca(candidata));
+        // Não pagou, então não confirmou: a cobrança de quem faltou é cancelada (menos Pix ou boleto ainda compensando).
+        if (novoStatus === "Não compareceu" && candidata.pagamento?.status === "Pendente" && candidata.pagamento.situacaoGateway !== "aguardando confirmação") {
+            candidata.pagamento = { status: null, valor: 0 };
+        }
         const atualizada = await Consulta.findOneAndUpdate(
             { _id: candidata._id, status: statusAnterior },
             {
@@ -162,7 +190,7 @@ const enviarAvisosDoDia = async () => {
         });
         await enviarEmailDaConsulta(marcada, {
             assunto: hoje ? "Sua consulta é hoje" : "Sua consulta está chegando",
-            mensagem: `Lembrete: sua consulta é ${quando}. Chegue com 15 minutos de antecedência e leve um documento com foto${marcada.status === "Confirmada" ? "" : " e, se ainda não confirmou, confirme sua presença pelo portal"}.`,
+            mensagem: `Lembrete: sua consulta é ${quando}. Chegue com 15 minutos de antecedência e leve um documento com foto${marcada.status === "Confirmada" ? "" : marcada.pagamento?.status === "Pendente" ? ". Ela ainda não está confirmada: para confirmar, pague a consulta pelo portal" : " e, se ainda não confirmou, confirme sua presença pelo portal"}.`,
             botao: "Ver minha consulta",
             observacao: "Se não puder ir, cancele pelo portal para liberar o horário para outro paciente."
         });
